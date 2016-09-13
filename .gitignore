@@ -1,0 +1,27 @@
+# Generated files
+build/
+
+# Logs
+logs
+*.log
+*.log.*
+
+# Runtime data
+pids
+*.pid
+*.seed
+
+# OSX generated files
+*.DS_Store
+
+# IDE generated files: Jetbrains
+.idea
+
+# node-waf configuration
+.lock-wscript
+
+# Dependency directory
+# https://www.npmjs.org/doc/misc/npm-faq.html#should-i-check-my-node_modules-folder-into-git
+node_modules
+
+*.iml
