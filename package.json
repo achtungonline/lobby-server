@@ -28,8 +28,9 @@
     "clean": "shx rm -rf build",
     "prebuild": "npm run clean && shx mkdir build",
     "build": "browserify src/server.js -o build/server.js --node",
-    "watch": "npm run build && watchify src/server.js -o build/server.js",
-    "start": "node build/server.js"
+    "build:test": "browserify src/server-test.js -o build/server-test.js --node",
+    "start": "node build/server.js",
+    "start:test": "node build/server-test.js"
   },
   "dependencies": {
     "bufferutil": "^1.2.1",
