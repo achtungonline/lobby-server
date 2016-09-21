@@ -1,155 +1,108 @@
 var io = require('socket.io')({ serveClient: false });
 
-var Match = require("core/src/core/match.js");
-var random = require("core/src/core/util/random.js");
-var gameStateFunctions = require("core/src/core/game-state-functions.js");
+var forEach = require("core/src/core/util/for-each");
 
-var ServerGame = require("./server-game.js");
+var Lobby = require("./lobby.js");
 
-var PLAYERS_PER_ROOM = 2;
-var nextRoomId = 0;
-var rooms = [];
+var lobbies = [];
+var socketData = {};
 
-function Room() {
-    var roomId = nextRoomId + "";
-    nextRoomId++;
-    var nextPlayerId = 0;
-    var players = [];
-    var match = null;
-    var game = null;
-    var serverGame = null;
-
-    function addPlayer(socket) {
-        if (players.length >= PLAYERS_PER_ROOM) {
-            throw Error("Adding player to full room");
-        }
-        var player = {
-            id: nextPlayerId + "",
-            socket: socket,
-            ready: false
-        };
-        nextPlayerId++;
-        players.push(player);
-        return player.id;
+var sendFunctions = {
+    lobbyEnter: (socketId,data) => {
+        io.to(socketId).emit("lobby_enter", data);
+    },
+    lobbyUpdate: (lobbyId,data) => {
+        io.to(lobbyId).emit("lobby_update", data)
+    },
+    gameStart: (lobbyId,data) => {
+        io.to(lobbyId).emit("game_start", data);
+    },
+    gameUpdate: (lobbyId,data) => {
+        io.to(lobbyId).emit("game_update", data);
+    },
+    gameOver: (lobbyId) => {
+        io.to(lobbyId).emit("game_over");
     }
+};
 
-    function removePlayer(playerId) {
-        var index = players.findIndex(p => p.id === playerId);
-        players.splice(index, 1);
-    }
-
-    function playerReady(playerId) {
-        console.log(playerId + " is ready");
-        var player = players.find(p => p.id === playerId);
-        player.ready = true;
-        if (players.length === PLAYERS_PER_ROOM && players.every(p => p.ready)) {
-            startGame();
-        }
-    }
-
-    function startGame() {
-        var matchConfig = {
-            players: players.map(p => ({id: p.id})),
-            map: gameStateFunctions.createMapSquare("Square 500", 500),
-            maxScore: 5*(players.length - 1)
-        };
-        match = Match({ matchConfig });
-        var seed = random.generateSeed();
-        game = match.prepareNextGame(seed);
-        players.forEach(player => {
-            player.socket.emit("start_game", game.gameState);
-        });
-        serverGame = ServerGame({
-            game,
-            onGameUpdate: function(update) {
-                players.forEach(player => {
-                    player.socket.emit("game_updated", update);
-                });
-            },
-            onGameOver: function() {
-                players.forEach(player => {
-                    player.socket.emit("game_over");
-                });
-                console.log("Game " + roomId + " over");
-                removeRoom(roomId);
-            }
-        });
-        serverGame.start();
-    }
-
-    function setPlayerSteering(playerId, steering) {
-        if (serverGame) {
-            serverGame.setPlayerSteering(playerId, steering);
-        }
-    }
-
-    function isFull() {
-        return players.length === PLAYERS_PER_ROOM;
-    }
-
-    return {
-        addPlayer,
-        id: roomId,
-        isFull,
-        playerReady,
-        removePlayer,
-        setPlayerSteering
-    }
+function addLobby() {
+    var lobby = Lobby(sendFunctions);
+    lobbies.push(lobby);
+    console.log("Created lobby " + lobby.id);
+    return lobby;
 }
 
-function addRoom() {
-    var room = Room();
-    rooms.push(room);
-    console.log("Created room " + room.id);
-    return room;
+function assignPlayerToLobby(socketId) {
+    var lobbyId = getVacantLobbyId();
+    var playerId = getLobby(lobbyId).addPlayer(socketId, socketData[socketId].playerData);
+    socketData[socketId].lobbyId = lobbyId;
+    io.sockets.connected[socketId].join(lobbyId);
+    console.log("Added player " + socketId + " to lobby " + lobbyId + " as player " + playerId);
 }
 
-function getRoom(roomId) {
-    return rooms.find(r => r.id === roomId);
+function getLobby(lobbyId) {
+    return lobbies.find(lobby => lobby.id === lobbyId);
 }
 
-function getVacantRoomId() {
-    if (rooms.length === 0 || rooms[rooms.length - 1].isFull()) {
-        return addRoom().id;
+function getVacantLobbyId() {
+    var lobby = lobbies.find(r => !r.isFull());
+    if (lobby) {
+        return lobby.id;
     } else {
-        return rooms[rooms.length - 1].id;
+        return addLobby().id;
     }
 }
 
-function removeRoom(roomId) {
-    var index = rooms.findIndex(r => r.id === roomId);
-    rooms.splice(index, 1);
-    console.log("Room " + roomId + " removed");
+function playerReady(socketId) {
+    var lobbyId = socketData[socketId].lobbyId;
+    var lobby = getLobby(lobbyId);
+    if (lobby) {
+        lobby.playerReady(socketId);
+    }
 }
+
+function playerSteering(socketId, steering) {
+    var lobbyId = socketData[socketId].lobbyId;
+    var lobby = getLobby(lobbyId);
+    if (lobby) {
+        lobby.setPlayerSteering(socketId, steering);
+    }
+}
+
+function playerDisconnect(socketId) {
+    var lobbyId = socketData[socketId].lobbyId;
+    var lobby = getLobby(lobbyId);
+    if (lobby) {
+        lobby.removePlayer(socketId);
+    }
+    console.log("Client disconnected: " + socketId);
+}
+
+function playerEnter(socketId, playerData) {
+    socketData[socketId].playerData = playerData;
+    assignPlayerToLobby(socketId);
+}
+
+function playerColorChange(socketId, newColorId) {
+    var lobbyId = socketData[socketId].lobbyId;
+    var lobby = getLobby(lobbyId);
+    lobby.colorChange(socketId, newColorId);
+}
+
+var protocol = {
+    "ready": playerReady,
+    "player_steering": playerSteering,
+    "disconnect": playerDisconnect,
+    "enter": playerEnter,
+    "color_change": playerColorChange
+};
 
 io.on('connection', function(socket){
     console.log("Client connected: " + socket.id);
-    var roomId = getVacantRoomId();
-    var playerId = getRoom(roomId).addPlayer(socket);
-    socket.emit("player_id", playerId);
-    console.log("Added player " + playerId + " to room " + roomId);
-
-    socket.on("ready", () => {
-        var room = getRoom(roomId);
-        if (room) {
-            room.playerReady(playerId);
-        }
-    });
-
-    socket.on("player_steering", steering => {
-        var room = getRoom(roomId);
-        if (room) {
-            room.setPlayerSteering(playerId, steering[playerId]);
-        }
-    });
-
-    socket.on("disconnect", function() {
-        var room = getRoom(roomId);
-        if (room) {
-            room.removePlayer(playerId);
-        }
-        console.log("Client disconnected: " + socket.id);
-    });
+    socketData[socket.id] = {
+        lobbyId: undefined
+    };
+    forEach(protocol, (f,name) => socket.on(name, f.bind(this, socket.id)));
 });
 io.listen(3000);
 console.log("Server started");
