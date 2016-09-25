@@ -1,11 +1,12 @@
 var Match = require("core/src/core/match.js");
 var random = require("core/src/core/util/random.js");
 var gameStateFunctions = require("core/src/core/game-state-functions.js");
-var wormColorIds = require("core/src/core/constants").wormColorIds;
+import {wormColorIds, STEERING_RIGHT, STEERING_STRAIGHT, STEERING_LEFT} from "core/src/core/constants";
 
 var ServerGame = require("./server-game.js");
 
 var MAX_PLAYERS_PER_LOBBY = 5;
+var TIME_BETWEEN_GAMES = 5000; // milliseconds
 var nextLobbyId = 0;
 
 module.exports = function Lobby(ioFunctions) {
@@ -22,7 +23,7 @@ module.exports = function Lobby(ioFunctions) {
     var game = null;
     var serverGame = null;
 
-    function addPlayer(socketId, playerData) {
+    function addPlayer(socketId, name) {
         if (playerMapping[socketId]) {
             throw Error("Adding existing player to room");
         }
@@ -31,48 +32,60 @@ module.exports = function Lobby(ioFunctions) {
         }
         var player = {
             id: nextPlayerId + "",
-            name: playerData.name,
+            name,
             colorId: wormColorIds.find(id => matchConfig.players.every(p => p.colorId !== id)),
             ready: false
         };
         nextPlayerId++;
+        matchConfig.players.forEach(p => p.ready = false);
         matchConfig.players.push(player);
         matchConfig.maxScore = 5*(matchConfig.players.length - 1);
         playerMapping[socketId] = player.id;
-        emitMatchConfig();
+        sendMatchConfig();
         ioFunctions.lobbyEnter(socketId, { playerId: player.id, matchConfig });
         return player.id;
     }
 
-    function emitMatchConfig() {
+    function sendMatchConfig() {
         ioFunctions.lobbyUpdate(lobbyId, matchConfig);
     }
 
-    function removePlayer(socketId) {
-        var index = matchConfig.players.findIndex(p => p.id === playerMapping[socketId]);
-        matchConfig.players.splice(index, 1);
-        matchConfig.maxScore = 5*(matchConfig.players.length - 1);
-        emitMatchConfig();
+    function playerLeave(socketId) {
+        if (!hasMatchStarted()) {
+            var index = matchConfig.players.findIndex(p => p.id === playerMapping[socketId]);
+            matchConfig.players.splice(index, 1);
+            matchConfig.maxScore = 5*(matchConfig.players.length - 1);
+            matchConfig.players.forEach(p => p.ready = false);
+            sendMatchConfig();
+        }
+        delete playerMapping[socketId];
     }
 
     function playerReady(socketId) {
-        console.log(socketId + " is ready");
         var player = matchConfig.players.find(p => p.id === playerMapping[socketId]);
-        player.ready = true;
-        emitMatchConfig();
-        if (matchConfig.players.length >= 2&& matchConfig.players.every(p => p.ready)) {
-            startGame();
+        if (!player.ready) {
+            player.ready = true;
+            sendMatchConfig();
+            if (matchConfig.players.length >= 2 && matchConfig.players.every(p => p.ready)) {
+                startMatch();
+            }
         }
     }
 
     function colorChange(socketId, newColorId) {
-        // TODO Check that color isn't used
-        matchConfig.players.find(p => p.id === playerMapping[socketId]).colorId = newColorId;
-        emitMatchConfig();
+        if (wormColorIds.indexOf(newColorId) !== -1 && matchConfig.players.every(p => p.colorId !== newColorId)) {
+            matchConfig.players.find(p => p.id === playerMapping[socketId]).colorId = newColorId;
+            sendMatchConfig();
+        }
+    }
+
+    function startMatch() {
+        match = Match({ matchConfig });
+        ioFunctions.matchStart(lobbyId);
+        startGame();
     }
 
     function startGame() {
-        match = Match({ matchConfig });
         var seed = random.generateSeed();
         game = match.prepareNextGame(seed);
         ioFunctions.gameStart(lobbyId, game.gameState);
@@ -81,32 +94,47 @@ module.exports = function Lobby(ioFunctions) {
             onGameUpdate: function(update) {
                 ioFunctions.gameUpdate(lobbyId, update);
             },
-            onGameOver: function() {
-                ioFunctions.gameOver(lobbyId);
-                console.log("Game " + lobbyId + " over");
-            }
+            onGameOver: gameOver
         });
         serverGame.start();
     }
 
+    function gameOver() {
+        match.addFinishedGameState(game.gameState);
+        ioFunctions.gameOver(lobbyId);
+        if (match.isMatchOver()) {
+            ioFunctions.matchOver(lobbyId);
+        } else {
+            ioFunctions.gameCountdown(lobbyId, TIME_BETWEEN_GAMES);
+            setTimeout(startGame, TIME_BETWEEN_GAMES);
+        }
+    }
+
     function setPlayerSteering(socketId, steering) {
-        var playerId = playerMapping[socketId];
-        if (serverGame) {
-            serverGame.setPlayerSteering(playerId, steering[playerId]);
+        if (steering === STEERING_LEFT || steering === STEERING_STRAIGHT || steering === STEERING_RIGHT) {
+            var playerId = playerMapping[socketId];
+            if (serverGame) {
+                serverGame.setPlayerSteering(playerId, steering);
+            }
         }
     }
 
     function isFull() {
-        return matchConfig.players.length === MAX_PLAYERS_PER_LOBBY;
+        return matchConfig.players.length >= MAX_PLAYERS_PER_LOBBY;
+    }
+
+    function hasMatchStarted() {
+        return match !== null;
     }
 
     return {
         addPlayer,
         colorChange,
+        hasMatchStarted,
         id: lobbyId,
         isFull,
         playerReady,
-        removePlayer,
+        playerLeave,
         setPlayerSteering
     }
-}
+};

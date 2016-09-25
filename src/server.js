@@ -8,101 +8,98 @@ var lobbies = [];
 var socketData = {};
 
 var sendFunctions = {
-    lobbyEnter: (socketId,data) => {
-        io.to(socketId).emit("lobby_enter", data);
-    },
-    lobbyUpdate: (lobbyId,data) => {
-        io.to(lobbyId).emit("lobby_update", data)
-    },
-    gameStart: (lobbyId,data) => {
-        io.to(lobbyId).emit("game_start", data);
-    },
-    gameUpdate: (lobbyId,data) => {
-        io.to(lobbyId).emit("game_update", data);
-    },
-    gameOver: (lobbyId) => {
-        io.to(lobbyId).emit("game_over");
-    }
+    lobbyEnter:     (socketId,data) =>  io.to(socketId).emit("lobby_enter", data),
+    lobbyUpdate:    (lobbyId,data)  =>  io.to(lobbyId).emit("lobby_update", data),
+    gameCountdown:  (lobbyId,data)  =>  io.to(lobbyId).emit("game_countdown", data),
+    gameStart:      (lobbyId,data)  =>  io.to(lobbyId).emit("game_start", data),
+    gameUpdate:     (lobbyId,data)  =>  io.to(lobbyId).emit("game_update", data),
+    gameOver:       (lobbyId)       =>  io.to(lobbyId).emit("game_over"),
+    matchStart:     (lobbyId,data)  =>  io.to(lobbyId).emit("match_start", data),
+    matchOver:      (lobbyId)       =>  io.to(lobbyId).emit("match_over")
 };
 
-function addLobby() {
+var receiveFunctions = {
+    "ready": playerReady,
+    "player_steering": playerSteering,
+    "disconnect": playerDisconnect,
+    "enter": playerEnter,
+    "leave": playerLeave,
+    "color_change": playerColorChange
+};
+
+function assignPlayerToLobby(socketId) {
+    var lobby = getVacantLobby();
+    if (!lobby) {
+        lobby = createLobby();
+    }
+    lobby.addPlayer(socketId, socketData[socketId].name);
+    socketData[socketId].lobbyId = lobby.id;
+    io.sockets.connected[socketId].join(lobby.id);
+}
+
+function createLobby() {
     var lobby = Lobby(sendFunctions);
     lobbies.push(lobby);
-    console.log("Created lobby " + lobby.id);
     return lobby;
 }
 
-function assignPlayerToLobby(socketId) {
-    var lobbyId = getVacantLobbyId();
-    var playerId = getLobby(lobbyId).addPlayer(socketId, socketData[socketId].playerData);
-    socketData[socketId].lobbyId = lobbyId;
-    io.sockets.connected[socketId].join(lobbyId);
-    console.log("Added player " + socketId + " to lobby " + lobbyId + " as player " + playerId);
+function getPlayerLobby(socketId) {
+    return lobbies.find(lobby => lobby.id === socketData[socketId].lobbyId);
 }
 
-function getLobby(lobbyId) {
-    return lobbies.find(lobby => lobby.id === lobbyId);
+function getVacantLobby() {
+    return lobbies.find(lobby => !lobby.hasMatchStarted() && !lobby.isFull());
 }
 
-function getVacantLobbyId() {
-    var lobby = lobbies.find(r => !r.isFull());
-    if (lobby) {
-        return lobby.id;
+function playerColorChange(socketId, newColorId) {
+    var lobby = getPlayerLobby(socketId);
+    lobby.colorChange(socketId, newColorId);
+}
+
+function playerDisconnect(socketId) {
+    playerLeave(socketId);
+}
+
+function playerEnter(socketId, data) {
+    if (data && typeof data.name === "string") {
+        socketData[socketId].name = data.name;
+        assignPlayerToLobby(socketId);
     } else {
-        return addLobby().id;
+        // Send message to client about bad name
+    }
+}
+
+function playerLeave(socketId) {
+    var lobby = getPlayerLobby(socketId);
+    if (lobby) {
+        var socket = io.sockets.connected[socketId];
+        if (socket) {
+            socket.leave(lobby.id);
+        }
+        lobby.playerLeave(socketId);
+        socketData[socketId].lobbyId = undefined;
     }
 }
 
 function playerReady(socketId) {
-    var lobbyId = socketData[socketId].lobbyId;
-    var lobby = getLobby(lobbyId);
+    var lobby = getPlayerLobby(socketId);
     if (lobby) {
         lobby.playerReady(socketId);
     }
 }
 
 function playerSteering(socketId, steering) {
-    var lobbyId = socketData[socketId].lobbyId;
-    var lobby = getLobby(lobbyId);
+    var lobby = getPlayerLobby(socketId);
     if (lobby) {
         lobby.setPlayerSteering(socketId, steering);
     }
 }
 
-function playerDisconnect(socketId) {
-    var lobbyId = socketData[socketId].lobbyId;
-    var lobby = getLobby(lobbyId);
-    if (lobby) {
-        lobby.removePlayer(socketId);
-    }
-    console.log("Client disconnected: " + socketId);
-}
-
-function playerEnter(socketId, playerData) {
-    socketData[socketId].playerData = playerData;
-    assignPlayerToLobby(socketId);
-}
-
-function playerColorChange(socketId, newColorId) {
-    var lobbyId = socketData[socketId].lobbyId;
-    var lobby = getLobby(lobbyId);
-    lobby.colorChange(socketId, newColorId);
-}
-
-var protocol = {
-    "ready": playerReady,
-    "player_steering": playerSteering,
-    "disconnect": playerDisconnect,
-    "enter": playerEnter,
-    "color_change": playerColorChange
-};
-
 io.on('connection', function(socket){
-    console.log("Client connected: " + socket.id);
     socketData[socket.id] = {
         lobbyId: undefined
     };
-    forEach(protocol, (f,name) => socket.on(name, f.bind(this, socket.id)));
+    forEach(receiveFunctions, (f,name) => socket.on(name, f.bind(this, socket.id)));
 });
 io.listen(3000);
 console.log("Server started");
