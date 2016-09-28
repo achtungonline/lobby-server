@@ -15,7 +15,11 @@ var sendFunctions = {
     gameUpdate:     (lobbyId,data)  =>  io.to(lobbyId).emit("game_update", data),
     gameOver:       (lobbyId)       =>  io.to(lobbyId).emit("game_over"),
     matchStart:     (lobbyId,data)  =>  io.to(lobbyId).emit("match_start", data),
-    matchOver:      (lobbyId)       =>  io.to(lobbyId).emit("match_over")
+    matchOver:      (lobbyId)       =>  {
+        io.to(lobbyId).emit("match_over");
+        getLobbyPlayers(lobbyId).forEach(socketId => playerLeave(socketId));
+        removeLobby(lobbyId);
+    }
 };
 
 var receiveFunctions = {
@@ -43,12 +47,21 @@ function createLobby() {
     return lobby;
 }
 
+function getLobbyPlayers(lobbyId) {
+    var room = io.sockets.adapter.rooms[lobbyId];
+    if (room) {
+        return Object.keys(room.sockets);
+    } else {
+        return [];
+    }
+}
+
 function getPlayerLobby(socketId) {
     return lobbies.find(lobby => lobby.id === socketData[socketId].lobbyId);
 }
 
 function getVacantLobby() {
-    return lobbies.find(lobby => !lobby.hasMatchStarted() && !lobby.isFull());
+    return lobbies.find(lobby => !lobby.isPlaying() && !lobby.isFull());
 }
 
 function playerColorChange(socketId, newColorId) {
@@ -95,6 +108,23 @@ function playerSteering(socketId, steering) {
     }
 }
 
+function printLobbyData() {
+    console.log("---------------------");
+    console.log("Lobbies:");
+    lobbies.forEach(lobby => {
+        console.log("Lobby " + lobby.id + (lobby.isPlaying() ? " (playing)" : "") + ":");
+        var players = getLobbyPlayers(lobby.id);
+        console.log(players.map(socketId => socketData[socketId].name));
+    })
+}
+
+function removeLobby(lobbyId) {
+    var index = lobbies.findIndex(lobby => lobby.id === lobbyId);
+    if (index !== -1) {
+        lobbies.splice(index, 1);
+    }
+}
+
 io.on('connection', function(socket){
     socketData[socket.id] = {
         lobbyId: undefined
@@ -102,4 +132,9 @@ io.on('connection', function(socket){
     forEach(receiveFunctions, (f,name) => socket.on(name, f.bind(this, socket.id)));
 });
 io.listen(3000);
+
+if (process.env.NODE_ENV === "development") {
+    console.log("---Development build---");
+    setInterval(printLobbyData, 5000);
+}
 console.log("Server started");

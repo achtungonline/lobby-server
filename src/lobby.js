@@ -20,7 +20,6 @@ module.exports = function Lobby(ioFunctions) {
     };
     var playerMapping = {};
     var match = null;
-    var game = null;
     var serverGame = null;
 
     function addPlayer(socketId, name) {
@@ -51,7 +50,7 @@ module.exports = function Lobby(ioFunctions) {
     }
 
     function playerLeave(socketId) {
-        if (!hasMatchStarted()) {
+        if (!isPlaying()) {
             var index = matchConfig.players.findIndex(p => p.id === playerMapping[socketId]);
             matchConfig.players.splice(index, 1);
             matchConfig.maxScore = 5*(matchConfig.players.length - 1);
@@ -87,7 +86,7 @@ module.exports = function Lobby(ioFunctions) {
 
     function startGame() {
         var seed = random.generateSeed();
-        game = match.prepareNextGame(seed);
+        var game = match.prepareNextGame(seed);
         ioFunctions.gameStart(lobbyId, game.gameState);
         serverGame = ServerGame({
             game,
@@ -100,7 +99,7 @@ module.exports = function Lobby(ioFunctions) {
     }
 
     function gameOver() {
-        match.addFinishedGameState(game.gameState);
+        match.addFinishedGameState(serverGame.gameState);
         ioFunctions.gameOver(lobbyId);
         if (match.isMatchOver()) {
             ioFunctions.matchOver(lobbyId);
@@ -123,14 +122,14 @@ module.exports = function Lobby(ioFunctions) {
         return matchConfig.players.length >= MAX_PLAYERS_PER_LOBBY;
     }
 
-    function hasMatchStarted() {
+    function isPlaying() {
         return match !== null;
     }
 
     return {
         addPlayer,
         colorChange,
-        hasMatchStarted,
+        isPlaying,
         id: lobbyId,
         isFull,
         playerReady,
