@@ -6,7 +6,7 @@ var UPDATE_TICK = 15;
 var CLIENT_UPDATE_TICK = 45;
 
 function DeltaUpdateHandler(gameState) {
-    var wormPathSegmentCounts = {};
+    var wormPathSegmentIndex = {};
     var gameEventCount = 0;
     var powerUpEventCount = 0;
     var effectEventCount = 0;
@@ -14,18 +14,21 @@ function DeltaUpdateHandler(gameState) {
     function extractGameStateChanges() {
         var wormPathSegments = {};
         forEach(gameState.wormPathSegments, function(segments, id) {
-            if (wormPathSegmentCounts[id] === undefined) {
-                wormPathSegmentCounts[id] = 0;
+            if (wormPathSegmentIndex[id] === undefined) {
+                wormPathSegmentIndex[id] = 0;
             }
             if (segments.length > 0) {
-                if (wormPathSegmentCounts[id] < segments.length) {
-                    wormPathSegments[id] = [];
-                    while (wormPathSegmentCounts[id] < segments.length) {
-                        wormPathSegments[id].push(compression.compressWormSegment(segments[wormPathSegmentCounts[id]]));
-                        wormPathSegmentCounts[id]++;
+                wormPathSegments[id] = [];
+                var pathSegment;
+                while (true) {
+                    pathSegment = segments[wormPathSegmentIndex[id]];
+                    pathSegment.index = wormPathSegmentIndex[id];
+                    wormPathSegments[id].push(compression.compressWormSegment(pathSegment));
+                    if (wormPathSegmentIndex[id] < segments.length - 1) {
+                        wormPathSegmentIndex[id]++;
+                    } else {
+                        break;
                     }
-                } else {
-                    wormPathSegments[id] = [compression.compressWormSegment(segments[segments.length - 1])];
                 }
             }
         });

@@ -15,7 +15,7 @@ module.exports = function Lobby(ioFunctions) {
     var nextPlayerId = 0;
     var matchConfig = {
         players: [],
-        map: gameStateFunctions.createMapSquare("Square 500", 500),
+        map: gameStateFunctions.createMapSquare({ size: 600 }),
         maxScore: 0
     };
     var playerMapping = {};
