@@ -1,8 +1,9 @@
-var io = require('socket.io')({ serveClient: false });
+import socketIo from "socket.io";
+var io = socketIo({ serveClient: false });
 
-var forEach = require("core/src/core/util/for-each");
+import forEach from "core/src/core/util/for-each";
 
-var Lobby = require("./lobby.js");
+import Lobby from "./lobby.js";
 
 var lobbies = [];
 var socketData = {};

@@ -1,10 +1,11 @@
-var io = require('socket.io')({ serveClient: false });
+import socketIo from "socket.io";
+var io = socketIo({ serveClient: false });
 
-var Match = require("core/src/core/match.js");
-var random = require("core/src/core/util/random.js");
-var forEach = require("core/src/core/util/for-each.js");
+import Match from "core/src/core/match.js";
+import * as random from "core/src/core/util/random.js";
+import forEach from "core/src/core/util/for-each.js";
 
-var ServerGame = require("./server-game.js");
+import ServerGame from "./server-game.js";
 
 io.on('connection', function(socket){
     var match = null;

@@ -1,21 +1,21 @@
-var Match = require("core/src/core/match.js");
-var random = require("core/src/core/util/random.js");
-var gameStateFunctions = require("core/src/core/game-state-functions.js");
+import Match from "core/src/core/match.js";
+import * as random from "core/src/core/util/random.js";
+import * as gsf from "core/src/core/game-state-functions.js";
 import {wormColorIds, STEERING_RIGHT, STEERING_STRAIGHT, STEERING_LEFT} from "core/src/core/constants";
 
-var ServerGame = require("./server-game.js");
+import ServerGame from "./server-game";
 
 var MAX_PLAYERS_PER_LOBBY = 5;
 var TIME_BETWEEN_GAMES = 5000; // milliseconds
 var nextLobbyId = 0;
 
-module.exports = function Lobby(ioFunctions) {
+export default function Lobby(ioFunctions) {
     var lobbyId = nextLobbyId + "";
     nextLobbyId++;
     var nextPlayerId = 0;
     var matchConfig = {
         players: [],
-        map: gameStateFunctions.createMapSquare({ size: 600 }),
+        map: gsf.createMapSquare({ size: 600 }),
         maxScore: 0
     };
     var playerMapping = {};

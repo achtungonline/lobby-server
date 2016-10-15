@@ -1,6 +1,6 @@
-var gameStateFunctions = require("core/src/core/game-state-functions.js");
-var forEach = require("core/src/core/util/for-each.js");
-var compression = require("core/src/core/util/compression.js");
+import * as gsf from "core/src/core/game-state-functions.js";
+import forEach from "core/src/core/util/for-each.js";
+import * as compression from "core/src/core/util/compression.js";
 
 var UPDATE_TICK = 15;
 var CLIENT_UPDATE_TICK = 45;
@@ -61,7 +61,7 @@ function DeltaUpdateHandler(gameState) {
     };
 }
 
-module.exports = function ServerGame({ game, onGameUpdate, onGameOver }) {
+export default function ServerGame({ game, onGameUpdate, onGameOver }) {
 
     var deltaUpdateHandler = DeltaUpdateHandler(game.gameState);
 
@@ -72,7 +72,7 @@ module.exports = function ServerGame({ game, onGameUpdate, onGameOver }) {
     };
 
     function setPlayerSteering(playerId, steering) {
-        gameStateFunctions.setPlayerSteering(game.gameState, playerId, steering);
+        gsf.setPlayerSteering(game.gameState, playerId, steering);
     }
 
     function start() {
