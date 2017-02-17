@@ -2,6 +2,7 @@
 public/js
 public/css
 build/
+target
 
 # Logs
 logs
@@ -39,3 +40,5 @@ build/Release
 node_modules
 
 *.iml
+.nrepl-port
+
