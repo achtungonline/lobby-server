@@ -1,5 +1,6 @@
 (ns achtungonline.server
   (:require
+    [clojure.string :refer [upper-case]]
     [org.httpkit.server :refer :all]
     [compojure.core :refer :all]
     [clojure.data.json :as json]
@@ -44,11 +45,11 @@
 (defn
   ^{:doc  "Takes a channel and returns the id connected to the channel"
     :test (fn []
-            (is= (channel->id {:connected-clients [{:id 2 :channel "mocked channel"}]}
-                              "mocked channel")
+            (is= (channel->player->id {:connected-clients [{:id 2 :channel "mocked channel"}]}
+                                      "mocked channel")
                  2))
     }
-  channel->id [server-state channel]
+  channel->player->id [server-state channel]
   (some #(when (= channel (:channel %)) (:id %))
         (:connected-clients server-state)))
 
@@ -73,10 +74,30 @@
   (println "player-leave function"))
 
 (defn
+  ^{
+    :doc  ""
+    :test (fn []
+            (is= (get-channels-in-same-lobby (create-server-state :connected-clients [{:id "1" :channel "channel_1"}
+                                                                                      {:id "2" :channel "channel_2"}
+                                                                                      {:id "3" :channel "channel_3"}])
+                                             (ls/create-state :lobbies [{:players [{:id "1"} {:id "2"}]}])
+                                             "2")
+                 ["channel_1" "channel_2"])
+            (is= (get-channels-in-same-lobby {:connected-clients [{:id "client_0" :channel "channel_1"}] :counter 1}
+                                             {:lobbies [{:id "lobby_0" :players [{:id "client_0" :ready false}]}] :players [{:id "client_0" :name "Olle"}] :counter 1}
+                                             "client_0")
+                 ["channel_1"]))}
+  get-channels-in-same-lobby [server-state lobbies-state id]
+  (->> (:connected-clients server-state)
+       (filter (fn [cc]
+                 (some #(= (:id cc) %) (map :id (:players (:lobby-data (lc/get-lobby-data lobbies-state id)))))))
+       (map :channel)))
+
+(defn
   ^{:doc  ""
     :test (fn []
-            (is= (create-request-json "enter" {:value "someValue"})
-                 "{\"type\":\"enter\",\"value\":\"someValue\"}")
+            (is= (create-request-json "enter" {:player-name "someValue"})
+                 "{\"type\":\"enter\",\"playerName\":\"someValue\"}")
             (is= (create-request-json "enter")
                  "{\"type\":\"enter\"}"))}
 
@@ -84,33 +105,53 @@
   ([type] (create-request-json type {}))
   ([type data]
    (-> (merge {:type type} data)
-       (json/write-str))))
+       (json/write-str :key-fn (fn [key]
+                                 (-> key
+                                     (clojure.string/replace #"(-)(.)" (fn [a] (upper-case (get a 2))))
+                                     (clojure.string/replace #":" "")))))))
 
-(defn enter-lobby! [channel data]
-  (do
-    (lc/player-enter-lobby @lobbies-state-atom (channel->id @server-state-atom channel) (get data "playerName"))
-    (send! channel (create-request-json "lobbyEntered"))))
+(defn enter-lobby! [lobbies-state-atom {player-id :player-id player-name :player-name}]
+  (swap! lobbies-state-atom lc/player-enter-lobby player-id player-name))
+;(send! channel (create-request-json "lobbyEntered" (lc/get-lobby-data @lobbies-state-atom player-id)))))
+
+(defn player-ready! [lobbies-state-atom {player-id :player-id ready :ready}]
+  ;(do
+  (swap! lobbies-state-atom ls/set-player-ready player-id ready))
+;(send! channel (create-request-json "lobbyUpdate" (lc/get-lobby-data @lobbies-state-atom player-id))))))
 
 (defn server [req]
   (with-channel req channel                                 ; get the channel
                 ;; communicate with client using method defined above
                 ;(inc-next-id server-state)
+                (println "New channel!")
                 (swap! server-state-atom add-connected-client channel)
-                ;(send! channel (json/write-str {"type" "id" "id" (channel->id @server-state-atom channel)}))
+                ;(send! channel (json/write-str {"type" "id" "id" (channel->player->id @server-state-atom channel)}))
                 (on-receive channel (fn [data]              ; data received from client
                                       ;; An optional param can pass to send!: close-after-send?
                                       ;; When unspecified, `close-after-send?` defaults to true for HTTP channels
                                       ;; and false for WebSocket.  (send! channel data close-after-send?)
-                                      (let [data-obj (json/read-str data)
-                                            data-type (get data-obj "type")]
-                                        (cond
-                                          (= data-type "ready") (player-ready)
-                                          (= data-type "color_change") (player-color-change)
-                                          (= data-type "enter_lobby") (enter-lobby! channel data)
-                                          (= data-type "player-disconnect") (player-disconnect)
-                                          (= data-type "player-leave") (player-leave)
-                                          :else (println data-obj))
-                                        )))
+                                      (do
+                                        (println "Recieved data" data)
+                                        (let [data-obj (json/read-str data)
+                                              data-type (get data-obj "type")
+                                              player-id (channel->player->id @server-state-atom channel)]
+                                          (do
+                                            (cond
+                                              (= data-type "player-ready") (player-ready! lobbies-state-atom {:player-id player-id :ready (get data-obj "ready")})
+                                              (= data-type "color_change") (player-color-change)
+                                              (= data-type "enter_lobby") (do (enter-lobby! lobbies-state-atom {:player-id player-id :player-name (get data-obj "playerName")})
+                                                                              (send! channel (create-request-json "lobby_entered" (lc/get-lobby-data @lobbies-state-atom player-id))))
+                                              (= data-type "player-disconnect") (player-disconnect)
+                                              (= data-type "player-leave") (player-leave)
+                                              :else (println "Unknown data-type" data-obj))
+                                            (println "Server-state" @server-state-atom)
+                                            (println "Lobbies-state" @lobbies-state-atom)
+                                            (println "player-id" player-id)
+                                            ; Now we want to send an lobbyUpdate to all participants
+                                            (do (println "!!!channels" (get-channels-in-same-lobby @server-state-atom @lobbies-state-atom player-id))
+                                                (doseq [cc-channel (get-channels-in-same-lobby @server-state-atom @lobbies-state-atom player-id)]
+                                                  (do (println "!!!channel" cc-channel)
+                                                      (send! cc-channel (create-request-json "lobby_update" (lc/get-lobby-data @lobbies-state-atom player-id)))))))))))
                 (on-close channel (fn [status]
                                     (println "channel closed"))))) ; data is sent directly to the client
 

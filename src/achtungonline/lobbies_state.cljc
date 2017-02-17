@@ -19,9 +19,10 @@
             (is= (create-lobby "0")
                  {:id      "0"
                   :players []}))}
-  create-lobby [id]
-  {:id      id
-   :players []})
+  create-lobby [id & kvs]
+  (let [lobby {:id      id
+               :players []}]
+    (reduce (fn [s [key val]] (assoc s key val)) lobby (partition 2 kvs))))
 
 (defn
   ^{:doc  "Add a client to the connected clients list"
@@ -77,13 +78,13 @@
 (defn
   ^{:doc  "Add a player to the players list"
     :test (fn []
-            (is= (add-player-to-lobby (create-state :lobbies [(create-lobby "0")]) "1" "0")
-                 (create-state :lobbies [{:id "0" :players ["1"]}])))}
-  add-player-to-lobby [state player-id lobby-id]
+            (is= (add-player-data-to-lobby (create-state :lobbies [(create-lobby "0")]) "0" {:id "1"})
+                 (create-state :lobbies [{:id "0" :players [{:id "1"}]}])))}
+  add-player-data-to-lobby [state lobby-id player-data]
   (update state :lobbies (fn [lobbies]
                            (map (fn [lobby]
                                   (if (= (:id lobby) lobby-id)
-                                    (update lobby :players conj player-id)
+                                    (update lobby :players conj player-data)
                                     lobby))
                                 lobbies))))
 
@@ -105,7 +106,25 @@
        (filter (fn [l] (= (:id l) lobby-id)))
        (first)))
 
+(defn
+  ^{:doc  ""
+    :test (fn []
+            (is= (get-lobbies (create-state :lobbies [(create-lobby "0")]))
+                 [(create-lobby "0")]))}
+  get-lobbies [state]
+  (:lobbies state))
 
-
-
-
+(defn
+  ^{:doc  ""
+    :test (fn []
+            (is= (set-player-ready (create-state :lobbies [(create-lobby "0" :players [{:id "1" :ready false}])]) "1" true)
+                 (create-state :lobbies [(create-lobby "0" :players [{:id "1" :ready true}])])))}
+  set-player-ready [state player-id ready]
+  (update state :lobbies (fn [lobbies]
+                           (map (fn [lobby]
+                                  (assoc lobby :players (map (fn [player]
+                                                               (if (= (:id player) player-id)
+                                                                 (assoc player :ready true)
+                                                                 player))
+                                                             (:players lobby))))
+                                lobbies))))

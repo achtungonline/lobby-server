@@ -51,7 +51,7 @@
     :test (fn []
             (is= (player-enter-lobby (ls/create-state) "0" "olle")
                  (ls/create-state :players [{:id "0" :name "olle"}]
-                                  :lobbies [{:id "lobby_0" :players ["0"]}]
+                                  :lobbies [{:id "lobby_0" :players [{:id "0" :ready false}]}]
                                   :counter 1)))}
   player-enter-lobby [state player-id player-name]
   (let [[state lobby] (if (open-lobby-exists state)
@@ -60,17 +60,61 @@
                           [state (get-open-lobby state)]))]
     (-> state
         (update-player player-id player-name)
-        (ls/add-player-to-lobby player-id (:id lobby)))))
+        (ls/add-player-data-to-lobby (:id lobby) {:id player-id :ready false}))))
 
 (defn
   ^{:doc  ""
     :test (fn []
-            (is= (lobby->match-config (ls/create-state :lobbies [(ls/create-lobby "0")]) "0")
+            (is= (lobby-id->match-config (ls/create-state :lobbies [(ls/create-lobby "0")]) "0")
                  {:players   []
                   :max-score 0
-                  :map       nil}))}
-  lobby->match-config [state lobby-id]
+                  :map       {:type "square" :width 800 :height 800}})
+            (is= (lobby-id->match-config (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1"} {:id "2"}])]) "0")
+                 {:players   [{:id "1"} {:id "2"}]
+                  :max-score 5
+                  :map       {:type "square" :width 800 :height 800}})
+            (is= (lobby-id->match-config {:lobbies [{:id "lobby_0" :players [{:id "client_0" :ready false}]}] :players [{:id "client_0" :name "Olle"}] :counter 1} "lobby_0")
+                 {:players   [{:id "client_0"}]
+                  :max-score 0
+                  :map       {:type "square" :width 800 :height 800}}))}
+  lobby-id->match-config [state lobby-id]
   (let [lobby (ls/get-lobby state lobby-id)]
-  {:players (:players lobby)
-   :max-score 0
-   :map nil}))
+    {:players   (map (fn [player] {:id (:id player)}) (:players lobby))
+     :max-score (max (* (- (count (:players lobby)) 1) 5) 0)
+     :map       {:type "square" :width 800 :height 800}}))
+
+
+(defn
+  ^{:doc  ""
+    :test (fn []
+            (is= (get-lobby-data (ls/create-state :lobbies [(ls/create-lobby "0")]) "0")
+                 {:match-config {
+                                 :players   []
+                                 :max-score 0
+                                 :map       {:type "square" :width 800 :height 800}
+                                 }
+                  :lobby-data   {:players []}})
+            (is= (get-lobby-data (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1"} {:id "2"}])]) "1")
+                 {:match-config {
+                                 :players   [{:id "1"} {:id "2"}]
+                                 :max-score 5
+                                 :map       {:type "square" :width 800 :height 800}
+                                 }
+                  :lobby-data   {:players [{:id "1"} {:id "2"}]}})
+            (is= (get-lobby-data {:lobbies [{:id "lobby_0" :players [{:id "client_0" :ready false}]}] :players [{:id "client_0" :name "Olle"}] :counter 1} "client_0")
+                 {:match-config {
+                                 :players   [{:id "client_0"}]
+                                 :max-score 0
+                                 :map       {:type "square" :width 800 :height 800}
+                                 }
+                  :lobby-data   {:players [{:id "client_0" :ready false}]}}))}
+  get-lobby-data [state id]
+  (let [lobby (or (ls/get-lobby state id)
+                  (first (filter (fn [lobby]
+                                   (not-empty
+                                     (filter (fn [player]
+                                               (= (:id player) id))
+                                             (:players lobby))))
+                                 (ls/get-lobbies state))))]
+        {:match-config (lobby-id->match-config state (:id lobby))
+         :lobby-data   {:players (:players lobby)}}))
