@@ -26,10 +26,10 @@
                  (second player-colors)))}
   get-next-available-player-color [lobby]
   (let [lobby-player-colors (map :colorId (:players lobby))]
-  (->> player-colors
-       (filter (fn [player-color]
-                 (nil? (some #{player-color} lobby-player-colors))))
-       (first))))
+    (->> player-colors
+         (filter (fn [player-color]
+                   (nil? (some #{player-color} lobby-player-colors))))
+         (first))))
 
 (defn
   ^{:doc  "Creates a lobby"
@@ -146,3 +146,18 @@
                                  (ls/get-lobbies state))))]
     {:match-config (lobby-id->match-config state (:id lobby))
      :lobby-data   {:players (:players lobby)}}))
+
+(defn
+  ^{:doc  ""
+    :test (fn []
+            (is= (player-leave-lobby (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1"}])]) "1")
+                 (ls/create-state :lobbies [(ls/create-lobby "0")]))
+            (is= (player-leave-lobby (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1"} {:id "2"}])]) "2")
+                 (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1"}])])))}
+  player-leave-lobby [state player-id]
+  (update state :lobbies (fn [lobbies]
+                           (map (fn [lobby]
+                                  (assoc lobby :players (filter (fn [player]
+                                                                  (not= (:id player) player-id))
+                                                                (:players lobby))))
+                                lobbies))))

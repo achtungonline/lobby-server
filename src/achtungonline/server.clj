@@ -61,9 +61,6 @@
 (defonce server-atom (atom nil))
 
 
-(defn player-ready []
-  (println "player-ready function"))
-
 (defn player-color-change []
   (println "player-color-change function"))
 
@@ -117,7 +114,10 @@
 (defn player-ready! [lobbies-state-atom {player-id :player-id ready :ready}]
   ;(do
   (swap! lobbies-state-atom ls/set-player-ready player-id ready))
-;(send! channel (create-request-json "lobbyUpdate" (lc/get-lobby-data @lobbies-state-atom player-id))))))
+
+(defn player-leave! [lobbies-state-atom {player-id :player-id}]
+  ;(do
+  (swap! lobbies-state-atom lc/player-leave-lobby player-id))
 
 (defn server [req]
   (with-channel req channel                                 ; get the channel
@@ -137,12 +137,12 @@
                                               player-id (channel->player->id @server-state-atom channel)]
                                           (do
                                             (cond
-                                              (= data-type "player-ready") (player-ready! lobbies-state-atom {:player-id player-id :ready (get data-obj "ready")})
+                                              (= data-type "player_ready") (player-ready! lobbies-state-atom {:player-id player-id :ready (get data-obj "ready")})
                                               (= data-type "color_change") (player-color-change)
                                               (= data-type "enter_lobby") (do (enter-lobby! lobbies-state-atom {:player-id player-id :player-name (get data-obj "playerName")})
                                                                               (send! channel (create-request-json "lobby_entered" (assoc (lc/get-lobby-data @lobbies-state-atom player-id) :player-id player-id))))
                                               (= data-type "player-disconnect") (player-disconnect)
-                                              (= data-type "player-leave") (player-leave)
+                                              (= data-type "player_leave") (player-leave! lobbies-state-atom {:player-id player-id})
                                               :else (println "Unknown data-type" data-obj))
                                             (println "Server-state" @server-state-atom)
                                             (println "Lobbies-state" @lobbies-state-atom)
