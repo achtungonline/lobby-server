@@ -140,7 +140,7 @@
                                               (= data-type "player-ready") (player-ready! lobbies-state-atom {:player-id player-id :ready (get data-obj "ready")})
                                               (= data-type "color_change") (player-color-change)
                                               (= data-type "enter_lobby") (do (enter-lobby! lobbies-state-atom {:player-id player-id :player-name (get data-obj "playerName")})
-                                                                              (send! channel (create-request-json "lobby_entered" (lc/get-lobby-data @lobbies-state-atom player-id))))
+                                                                              (send! channel (create-request-json "lobby_entered" (assoc (lc/get-lobby-data @lobbies-state-atom player-id) :player-id player-id))))
                                               (= data-type "player-disconnect") (player-disconnect)
                                               (= data-type "player-leave") (player-leave)
                                               :else (println "Unknown data-type" data-obj))
@@ -148,10 +148,8 @@
                                             (println "Lobbies-state" @lobbies-state-atom)
                                             (println "player-id" player-id)
                                             ; Now we want to send an lobbyUpdate to all participants
-                                            (do (println "!!!channels" (get-channels-in-same-lobby @server-state-atom @lobbies-state-atom player-id))
-                                                (doseq [cc-channel (get-channels-in-same-lobby @server-state-atom @lobbies-state-atom player-id)]
-                                                  (do (println "!!!channel" cc-channel)
-                                                      (send! cc-channel (create-request-json "lobby_update" (lc/get-lobby-data @lobbies-state-atom player-id)))))))))))
+                                            (doseq [cc-channel (get-channels-in-same-lobby @server-state-atom @lobbies-state-atom player-id)]
+                                              (send! cc-channel (create-request-json "lobby_update" (lc/get-lobby-data @lobbies-state-atom player-id)))))))))
                 (on-close channel (fn [status]
                                     (println "channel closed"))))) ; data is sent directly to the client
 
@@ -164,6 +162,17 @@
     (@server-atom :timeout 100)
     (reset! server-atom nil)))
 
+(defn reset-atoms! []
+  (do
+    (swap! lobbies-state-atom ls/create-state)
+    (swap! server-state-atom create-server-state)
+    nil))
+
 (defn restart! []
   (stop!)
   (start!))
+
+(defn full-restart! []
+  (do (stop!)
+      (reset-atoms!)
+      (start!)))
