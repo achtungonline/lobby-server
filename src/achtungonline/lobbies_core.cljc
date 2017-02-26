@@ -135,7 +135,9 @@
                                  :max-score 0
                                  :map       {:type "square" :width 800 :height 800}
                                  }
-                  :lobby-data   {:players [{:id "client_0" :ready false}]}}))}
+                  :lobby-data   {:players [{:id "client_0" :ready false}]}})
+            (is= (get-lobby-data (ls/create-state :lobbies [(ls/create-lobby "0")]) "1")
+                 nil))}
   get-lobby-data [state id]
   (let [lobby (or (ls/get-lobby state id)
                   (first (filter (fn [lobby]
@@ -144,8 +146,9 @@
                                                (= (:id player) id))
                                              (:players lobby))))
                                  (ls/get-lobbies state))))]
-    {:match-config (lobby-id->match-config state (:id lobby))
-     :lobby-data   {:players (:players lobby)}}))
+    (when lobby
+      {:match-config (lobby-id->match-config state (:id lobby))
+       :lobby-data   {:players (:players lobby)}})))
 
 (defn
   ^{:doc  ""

@@ -53,6 +53,19 @@
   (some #(when (= channel (:channel %)) (:id %))
         (:connected-clients server-state)))
 
+(defn
+  ^{:doc  ""
+    :test (fn []
+            (is= (player-id->channel {:connected-clients [{:id 2 :channel "mocked channel"}]}
+                                     2)
+                 "mocked channel"))
+    }
+  player-id->channel [server-state player-id]
+  (some #(when (= player-id (:id %)) (:channel %))
+        (:connected-clients server-state)))
+
+
+
 
 (defonce lobbies-state-atom (atom (ls/create-state)))
 
@@ -74,17 +87,23 @@
   ^{
     :doc  ""
     :test (fn []
-            (is= (get-channels-in-same-lobby (create-server-state :connected-clients [{:id "1" :channel "channel_1"}
-                                                                                      {:id "2" :channel "channel_2"}
-                                                                                      {:id "3" :channel "channel_3"}])
-                                             (ls/create-state :lobbies [{:players [{:id "1"} {:id "2"}]}])
-                                             "2")
+            (is= (get-channels-connected-to-same-lobby (create-server-state :connected-clients [{:id "1" :channel "channel_1"}
+                                                                                                {:id "2" :channel "channel_2"}
+                                                                                                {:id "3" :channel "channel_3"}])
+                                                       (ls/create-state :lobbies [{:players [{:id "1"} {:id "2"}]}])
+                                                       "2")
                  ["channel_1" "channel_2"])
-            (is= (get-channels-in-same-lobby {:connected-clients [{:id "client_0" :channel "channel_1"}] :counter 1}
-                                             {:lobbies [{:id "lobby_0" :players [{:id "client_0" :ready false}]}] :players [{:id "client_0" :name "Olle"}] :counter 1}
-                                             "client_0")
+            (is= (get-channels-connected-to-same-lobby (create-server-state :connected-clients [{:id "1" :channel "channel_1"}
+                                                                                                {:id "2" :channel "channel_2"}
+                                                                                                {:id "3" :channel "channel_3"}])
+                                                       (ls/create-state :lobbies [{:id "3" :players [{:id "1"} {:id "2"}]}])
+                                                       "3")
+                 ["channel_1" "channel_2"])
+            (is= (get-channels-connected-to-same-lobby {:connected-clients [{:id "client_0" :channel "channel_1"}] :counter 1}
+                                                       {:lobbies [{:id "lobby_0" :players [{:id "client_0" :ready false}]}] :players [{:id "client_0" :name "Olle"}] :counter 1}
+                                                       "client_0")
                  ["channel_1"]))}
-  get-channels-in-same-lobby [server-state lobbies-state id]
+  get-channels-connected-to-same-lobby [server-state lobbies-state id]
   (->> (:connected-clients server-state)
        (filter (fn [cc]
                  (some #(= (:id cc) %) (map :id (:players (:lobby-data (lc/get-lobby-data lobbies-state id)))))))
@@ -134,7 +153,8 @@
                                         (println "Recieved data" data)
                                         (let [data-obj (json/read-str data)
                                               data-type (get data-obj "type")
-                                              player-id (channel->player->id @server-state-atom channel)]
+                                              player-id (channel->player->id @server-state-atom channel)
+                                              lobbies-state-bofore @lobbies-state-atom]
                                           (do
                                             (cond
                                               (= data-type "player_ready") (player-ready! lobbies-state-atom {:player-id player-id :ready (get data-obj "ready")})
@@ -145,11 +165,25 @@
                                               (= data-type "player_leave") (player-leave! lobbies-state-atom {:player-id player-id})
                                               :else (println "Unknown data-type" data-obj))
                                             (println "Server-state" @server-state-atom)
+                                            (println "Lobbies-state-before" lobbies-state-bofore)
                                             (println "Lobbies-state" @lobbies-state-atom)
                                             (println "player-id" player-id)
+                                            (println "Channels" (distinct (concat (get-channels-connected-to-same-lobby @server-state-atom @lobbies-state-atom player-id) (get-channels-connected-to-same-lobby @server-state-atom lobbies-state-bofore player-id))))
+                                            (println)
                                             ; Now we want to send an lobbyUpdate to all participants
-                                            (doseq [cc-channel (get-channels-in-same-lobby @server-state-atom @lobbies-state-atom player-id)]
-                                              (send! cc-channel (create-request-json "lobby_update" (lc/get-lobby-data @lobbies-state-atom player-id)))))))))
+                                            (let [affected-lobby-ids (distinct (filter #(if (not (nil? %)) %) [(ls/player-id->lobby-id @lobbies-state-atom player-id) (ls/player-id->lobby-id lobbies-state-bofore player-id)]))]
+                                              (->> affected-lobby-ids
+                                                   (map (fn [lobby-id] (ls/get-lobby @lobbies-state-atom lobby-id)))
+                                                   (map :players)
+                                                   (flatten)
+                                                   (map :id)
+                                                   (distinct)
+                                                   ;(map (fn [player-id] (player-id->channel @server-state-atom player-id)))
+                                                   ((fn [player-ids]
+                                                      (doseq [player-id player-ids]
+                                                        (let [lobby-data (lc/get-lobby-data @lobbies-state-atom player-id)]
+                                                          (when lobby-data
+                                                            (send! (player-id->channel @server-state-atom player-id) (create-request-json "lobby_update" lobby-data))))))))))))))
                 (on-close channel (fn [status]
                                     (println "channel closed"))))) ; data is sent directly to the client
 

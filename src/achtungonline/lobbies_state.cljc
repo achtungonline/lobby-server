@@ -128,3 +128,19 @@
                                                                  player))
                                                              (:players lobby))))
                                 lobbies))))
+
+(defn
+  ^{
+    :doc  ""
+    :test (fn []
+            (is= (player-id->lobby-id (create-state :lobbies [(create-lobby "0" :players [{:id "1"}])]) "1")
+                 "0"))}
+  player-id->lobby-id [state player-id]
+  (->> (:lobbies state)
+       (filter (fn [lobby]
+                 (some (fn [p-id] (= player-id p-id))
+                       (map :id (:players lobby)))))
+       ((fn [lobbies]
+         (if (empty? lobbies)
+           nil
+           (:id (first lobbies)))))))
