@@ -141,6 +141,27 @@
                  (some (fn [p-id] (= player-id p-id))
                        (map :id (:players lobby)))))
        ((fn [lobbies]
-         (if (empty? lobbies)
-           nil
-           (:id (first lobbies)))))))
+          (if (empty? lobbies)
+            nil
+            (:id (first lobbies)))))))
+
+(defn
+  ^{
+    :doc  ""
+    :test (fn []
+            (is= (get-players (create-state :players [{:id "1"}]))
+                 [{:id "1"}]))}
+  get-players [state]
+  (:players state))
+
+(defn
+  ^{
+    :doc  ""
+    :test (fn []
+            (is= (get-player-name (create-state :players [(create-player "0" "olle")]) "0")
+                 "olle"))}
+  get-player-name [state player-id]
+  (->> (get-players state)
+       (filter #(= (:id %) player-id))
+       (first)
+       (:name)))

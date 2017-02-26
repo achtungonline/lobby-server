@@ -98,16 +98,16 @@
                   :max-score 0
                   :map       {:type "square" :width 800 :height 800}})
             (is= (lobby-id->match-config (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :colorId :blue} {:id "2" :colorId :pink}])]) "0")
-                 {:players   [{:id "1" :colorId :blue} {:id "2" :colorId :pink}]
+                 {:players   [{:id "1" :colorId :blue :name nil} {:id "2" :colorId :pink :name nil}]
                   :max-score 5
                   :map       {:type "square" :width 800 :height 800}})
             (is= (lobby-id->match-config {:lobbies [{:id "lobby_0" :players [{:id "client_0" :ready false}]}] :players [{:id "client_0" :name "Olle"}] :counter 1} "lobby_0")
-                 {:players   [{:id "client_0" :colorId nil}]
+                 {:players   [{:id "client_0" :colorId nil :name "Olle"}]
                   :max-score 0
                   :map       {:type "square" :width 800 :height 800}}))}
   lobby-id->match-config [state lobby-id]
   (let [lobby (ls/get-lobby state lobby-id)]
-    {:players   (map (fn [player] {:id (:id player) :colorId (:colorId player)}) (:players lobby))
+    {:players   (map (fn [player] {:id (:id player) :colorId (:colorId player) :name (ls/get-player-name state (:id player))}) (:players lobby))
      :max-score (max (* (- (count (:players lobby)) 1) 5) 0)
      :map       {:type "square" :width 800 :height 800}}))
 
@@ -122,20 +122,20 @@
                                  :map       {:type "square" :width 800 :height 800}
                                  }
                   :lobby-data   {:players []}})
-            (is= (get-lobby-data (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1"} {:id "2"}])]) "1")
+            (is= (get-lobby-data (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1"} {:id "2"}])] :players [(ls/create-player "1" "olle") (ls/create-player "2" "nils")]) "1")
                  {:match-config {
-                                 :players   [{:id "1" :colorId nil} {:id "2" :colorId nil}]
+                                 :players   [{:id "1" :colorId nil :name "olle"} {:id "2" :colorId nil :name "nils"}]
                                  :max-score 5
                                  :map       {:type "square" :width 800 :height 800}
                                  }
-                  :lobby-data   {:players [{:id "1"} {:id "2"}]}})
-            (is= (get-lobby-data {:lobbies [{:id "lobby_0" :players [{:id "client_0" :ready false}]}] :players [{:id "client_0" :name "Olle"}] :counter 1} "client_0")
+                  :lobby-data   {:players [{:id "1" :name "olle"} {:id "2" :name "nils"}]}})
+            (is= (get-lobby-data {:lobbies [{:id "lobby_0" :players [{:id "client_0" :ready false}]}] :players [(ls/create-player "client_0" "olle")] :counter 1} "client_0")
                  {:match-config {
-                                 :players   [{:id "client_0" :colorId nil}]
+                                 :players   [{:id "client_0" :colorId nil :name "olle"}]
                                  :max-score 0
                                  :map       {:type "square" :width 800 :height 800}
                                  }
-                  :lobby-data   {:players [{:id "client_0" :ready false}]}})
+                  :lobby-data   {:players [{:id "client_0" :ready false :name "olle"}]}})
             (is= (get-lobby-data (ls/create-state :lobbies [(ls/create-lobby "0")]) "1")
                  nil))}
   get-lobby-data [state id]
@@ -148,7 +148,9 @@
                                  (ls/get-lobbies state))))]
     (when lobby
       {:match-config (lobby-id->match-config state (:id lobby))
-       :lobby-data   {:players (:players lobby)}})))
+       :lobby-data   {:players (->> (:players lobby)
+                                    (map (fn [player]
+                                           (assoc player :name (ls/get-player-name state (:id player))))))}})))
 
 (defn
   ^{:doc  ""
