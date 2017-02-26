@@ -74,14 +74,8 @@
 (defonce server-atom (atom nil))
 
 
-(defn player-color-change []
-  (println "player-color-change function"))
-
 (defn player-disconnect []
   (println "player-disconnect function"))
-
-(defn player-leave []
-  (println "player-leave function"))
 
 (defn
   ^{
@@ -138,6 +132,11 @@
   ;(do
   (swap! lobbies-state-atom lc/player-leave-lobby player-id))
 
+(defn player-color-change! [lobbies-state-atom {player-id :player-id color-id :color-id}]
+  (do
+    (println player-id color-id)
+    (swap! lobbies-state-atom lc/player-color-change {:player-id player-id :color-id color-id})))
+
 (defn server [req]
   (with-channel req channel                                 ; get the channel
                 ;; communicate with client using method defined above
@@ -158,7 +157,7 @@
                                           (do
                                             (cond
                                               (= data-type "player_ready") (player-ready! lobbies-state-atom {:player-id player-id :ready (get data-obj "ready")})
-                                              (= data-type "color_change") (player-color-change)
+                                              (= data-type "color_change") (player-color-change! lobbies-state-atom {:player-id player-id :color-id (keyword (get data-obj "colorId"))})
                                               (= data-type "enter_lobby") (do (enter-lobby! lobbies-state-atom {:player-id player-id :player-name (get data-obj "playerName")})
                                                                               (send! channel (create-request-json "lobby_entered" (assoc (lc/get-lobby-data @lobbies-state-atom player-id) :player-id player-id))))
                                               (= data-type "player-disconnect") (player-disconnect)

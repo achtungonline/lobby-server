@@ -100,10 +100,15 @@
   ^{:doc  ""
     :test (fn []
             (is= (get-lobby (create-state :lobbies [(create-lobby "0")]) "0")
-                 (create-lobby "0")))}
-  get-lobby [state lobby-id]
+                 (create-lobby "0"))
+            (is= (get-lobby (create-state :lobbies [(create-lobby "0")]) "1")
+                 nil)
+            (is= (get-lobby (create-state :lobbies [(create-lobby "0" :players [{:id "1"}])]) "1")
+                 (create-lobby "0" :players [{:id "1"}])))}
+  get-lobby [state id]
   (->> (:lobbies state)
-       (filter (fn [l] (= (:id l) lobby-id)))
+       (filter (fn [l] (or (= (:id l) id)
+                           (some #(= (:id %) id) (:players l)))))
        (first)))
 
 (defn
@@ -125,6 +130,21 @@
                                   (assoc lobby :players (map (fn [player]
                                                                (if (= (:id player) player-id)
                                                                  (assoc player :ready true)
+                                                                 player))
+                                                             (:players lobby))))
+                                lobbies))))
+
+(defn
+  ^{:doc  ""
+    :test (fn []
+            (is= (set-player-color (create-state :lobbies [(create-lobby "0" :players [{:id "1" :color-id :blue}])]) {:player-id "1" :color-id :pink})
+                 (create-state :lobbies [(create-lobby "0" :players [{:id "1" :color-id :pink}])])))}
+  set-player-color [state {player-id :player-id color-id :color-id}]
+  (update state :lobbies (fn [lobbies]
+                           (map (fn [lobby]
+                                  (assoc lobby :players (map (fn [player]
+                                                               (if (= (:id player) player-id)
+                                                                 (assoc player :color-id color-id)
                                                                  player))
                                                              (:players lobby))))
                                 lobbies))))

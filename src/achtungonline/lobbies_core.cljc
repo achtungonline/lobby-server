@@ -22,10 +22,10 @@
     :test (fn []
             (is= (get-next-available-player-color (ls/create-lobby "1"))
                  (first player-colors))
-            (is= (get-next-available-player-color (ls/create-lobby "1" :players [{:colorId (first player-colors)} {:colorId (nth player-colors 2)}]))
+            (is= (get-next-available-player-color (ls/create-lobby "1" :players [{:color-id (first player-colors)} {:color-id (nth player-colors 2)}]))
                  (second player-colors)))}
   get-next-available-player-color [lobby]
-  (let [lobby-player-colors (map :colorId (:players lobby))]
+  (let [lobby-player-colors (map :color-id (:players lobby))]
     (->> player-colors
          (filter (fn [player-color]
                    (nil? (some #{player-color} lobby-player-colors))))
@@ -79,7 +79,7 @@
     :test (fn []
             (is= (player-enter-lobby (ls/create-state) "0" "olle")
                  (ls/create-state :players [{:id "0" :name "olle"}]
-                                  :lobbies [{:id "lobby_0" :players [{:id "0" :ready false :colorId :blue}]}]
+                                  :lobbies [{:id "lobby_0" :players [{:id "0" :ready false :color-id :blue}]}]
                                   :counter 1)))}
   player-enter-lobby [state player-id player-name]
   (let [[state lobby] (if (open-lobby-exists state)
@@ -88,7 +88,7 @@
                           [state (get-open-lobby state)]))]
     (-> state
         (update-player player-id player-name)
-        (ls/add-player-data-to-lobby (:id lobby) {:id player-id :ready false :colorId (get-next-available-player-color lobby)}))))
+        (ls/add-player-data-to-lobby (:id lobby) {:id player-id :ready false :color-id (get-next-available-player-color lobby)}))))
 
 (defn
   ^{:doc  ""
@@ -97,17 +97,17 @@
                  {:players   []
                   :max-score 0
                   :map       {:type "square" :width 800 :height 800}})
-            (is= (lobby-id->match-config (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :colorId :blue} {:id "2" :colorId :pink}])]) "0")
-                 {:players   [{:id "1" :colorId :blue :name nil} {:id "2" :colorId :pink :name nil}]
+            (is= (lobby-id->match-config (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :blue} {:id "2" :color-id :pink}])]) "0")
+                 {:players   [{:id "1" :color-id :blue :name nil} {:id "2" :color-id :pink :name nil}]
                   :max-score 5
                   :map       {:type "square" :width 800 :height 800}})
             (is= (lobby-id->match-config {:lobbies [{:id "lobby_0" :players [{:id "client_0" :ready false}]}] :players [{:id "client_0" :name "Olle"}] :counter 1} "lobby_0")
-                 {:players   [{:id "client_0" :colorId nil :name "Olle"}]
+                 {:players   [{:id "client_0" :color-id nil :name "Olle"}]
                   :max-score 0
                   :map       {:type "square" :width 800 :height 800}}))}
   lobby-id->match-config [state lobby-id]
   (let [lobby (ls/get-lobby state lobby-id)]
-    {:players   (map (fn [player] {:id (:id player) :colorId (:colorId player) :name (ls/get-player-name state (:id player))}) (:players lobby))
+    {:players   (map (fn [player] {:id (:id player) :color-id (:color-id player) :name (ls/get-player-name state (:id player))}) (:players lobby))
      :max-score (max (* (- (count (:players lobby)) 1) 5) 0)
      :map       {:type "square" :width 800 :height 800}}))
 
@@ -124,14 +124,14 @@
                   :lobby-data   {:players []}})
             (is= (get-lobby-data (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1"} {:id "2"}])] :players [(ls/create-player "1" "olle") (ls/create-player "2" "nils")]) "1")
                  {:match-config {
-                                 :players   [{:id "1" :colorId nil :name "olle"} {:id "2" :colorId nil :name "nils"}]
+                                 :players   [{:id "1" :color-id nil :name "olle"} {:id "2" :color-id nil :name "nils"}]
                                  :max-score 5
                                  :map       {:type "square" :width 800 :height 800}
                                  }
                   :lobby-data   {:players [{:id "1" :name "olle"} {:id "2" :name "nils"}]}})
             (is= (get-lobby-data {:lobbies [{:id "lobby_0" :players [{:id "client_0" :ready false}]}] :players [(ls/create-player "client_0" "olle")] :counter 1} "client_0")
                  {:match-config {
-                                 :players   [{:id "client_0" :colorId nil :name "olle"}]
+                                 :players   [{:id "client_0" :color-id nil :name "olle"}]
                                  :max-score 0
                                  :map       {:type "square" :width 800 :height 800}
                                  }
@@ -166,3 +166,29 @@
                                                                   (not= (:id player) player-id))
                                                                 (:players lobby))))
                                 lobbies))))
+
+(defn
+  ^{:doc ""
+    :test (fn []
+            (is= (is-color-id-taken (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :pink}])]) {:id "0" :color-id :blue})
+                 false)
+            (is= (is-color-id-taken (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :pink}])]) {:id "0" :color-id :pink})
+                 true))}
+  color-id-taken? [state {id :id color-id :color-id}]
+  (true? (some #(= color-id %) (map :color-id (:players (ls/get-lobby state id))))))
+
+
+(defn
+    ^{:doc ""
+        :test (fn []
+                (is= (player-color-change (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :pink}])]) {:player-id "1" :color-id :blue})
+                     (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :blue}])]))
+                (is= (player-color-change (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :pink}])]) {:player-id "1" :color-id :color-does-not-exist})
+                     (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :pink}])]))
+                ; Should not be able to change to an opponents color
+                (is= (player-color-change (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :pink} {:id "2" :color-id :blue}])]) {:player-id "1" :color-id :blue})
+                     (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :pink} {:id "2" :color-id :blue}])])))}
+player-color-change [state {player-id :player-id color-id :color-id}]
+  (if (or (color-id-taken? state {:id player-id :color-id color-id}) (empty? (filter #(= color-id %) player-colors)))
+    (do (println "got here" player-id color-id state) state)
+    (ls/set-player-color state {:player-id player-id :color-id color-id})))
