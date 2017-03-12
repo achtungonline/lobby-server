@@ -79,7 +79,7 @@
     :test (fn []
             (is= (player-enter-lobby (ls/create-state) "0" "olle")
                  (ls/create-state :players [{:id "0" :name "olle"}]
-                                  :lobbies [{:id "lobby_0" :players [{:id "0" :ready false :color-id :blue}]}]
+                                  :lobbies [{:id "lobby_0" :players [{:id "0" :ready false :color-id :blue}] :game-status :not-started}]
                                   :counter 1)))}
   player-enter-lobby [state player-id player-name]
   (let [[state lobby] (if (open-lobby-exists state)
@@ -168,27 +168,61 @@
                                 lobbies))))
 
 (defn
-  ^{:doc ""
+  ^{:doc  ""
     :test (fn []
-            (is= (is-color-id-taken (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :pink}])]) {:id "0" :color-id :blue})
+            (is= (color-id-taken? (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :pink}])]) {:id "0" :color-id :blue})
                  false)
-            (is= (is-color-id-taken (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :pink}])]) {:id "0" :color-id :pink})
+            (is= (color-id-taken? (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :pink}])]) {:id "0" :color-id :pink})
                  true))}
   color-id-taken? [state {id :id color-id :color-id}]
   (true? (some #(= color-id %) (map :color-id (:players (ls/get-lobby state id))))))
 
 
 (defn
-    ^{:doc ""
-        :test (fn []
-                (is= (player-color-change (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :pink}])]) {:player-id "1" :color-id :blue})
-                     (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :blue}])]))
-                (is= (player-color-change (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :pink}])]) {:player-id "1" :color-id :color-does-not-exist})
-                     (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :pink}])]))
-                ; Should not be able to change to an opponents color
-                (is= (player-color-change (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :pink} {:id "2" :color-id :blue}])]) {:player-id "1" :color-id :blue})
-                     (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :pink} {:id "2" :color-id :blue}])])))}
-player-color-change [state {player-id :player-id color-id :color-id}]
+  ^{:doc  ""
+    :test (fn []
+            (is= (player-color-change (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :pink}])]) {:player-id "1" :color-id :blue})
+                 (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :blue}])]))
+            (is= (player-color-change (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :pink}])]) {:player-id "1" :color-id :color-does-not-exist})
+                 (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :pink}])]))
+            ; Should not be able to change to an opponents color
+            (is= (player-color-change (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :pink} {:id "2" :color-id :blue}])]) {:player-id "1" :color-id :blue})
+                 (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :color-id :pink} {:id "2" :color-id :blue}])])))}
+  player-color-change [state {player-id :player-id color-id :color-id}]
   (if (or (color-id-taken? state {:id player-id :color-id color-id}) (empty? (filter #(= color-id %) player-colors)))
-    (do (println "got here" player-id color-id state) state)
+    state
     (ls/set-player-color state {:player-id player-id :color-id color-id})))
+
+
+(defn
+  ^{:test (fn []
+            (is= (all-players-ready? (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :ready true} {:id "2" :ready true}])]) "0")
+                 true)
+            (is= (all-players-ready? (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "1" :ready true} {:id "2" :ready false}])]) "0")
+                 false))}
+  all-players-ready? [state lobby-id]
+  (empty? (filter (fn [p] (not (:ready p))) (:players (ls/get-lobby state lobby-id)))))
+
+(defn
+  ^{:test (fn []
+            (is= (get-lobbies-to-start (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "3" :ready true}] :game-status :not-started)
+                                                                  (ls/create-lobby "1" :players [{:id "4" :ready true}] :game-status :started)
+                                                                  (ls/create-lobby "2" :players [{:id "5" :ready false}] :game-status :not-started)]))
+                 [(ls/create-lobby "0" :players [{:id "3" :ready true}] :game-status :not-started)]))}
+  get-lobbies-to-start [state]
+  (filter (fn [lobby]
+            (and (all-players-ready? state (:id lobby))
+                 (= (:game-status lobby) :not-started)))
+          (ls/get-lobbies state)))
+
+(defn
+  ^{:test (fn []
+            (is= (set-game-started (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "3" :ready true}] :game-status :not-started)]) "0")
+                 (ls/create-state :lobbies [(ls/create-lobby "0" :players [{:id "3" :ready true}] :game-status :started)])))}
+  set-game-started [state lobby-id]
+  (update state :lobbies (fn [lobbies]
+                           (map (fn [lobby]
+                                  (if (= (:id lobby) lobby-id)
+                                    (assoc lobby :game-status :started)
+                                    lobby))
+                                lobbies))))

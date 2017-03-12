@@ -6,7 +6,12 @@
     [clojure.data.json :as json]
     [achtungonline.test.core :refer [is is= is-not]]
     [achtungonline.lobbies-state :as ls]
-    [achtungonline.lobbies-core :as lc]))
+    [achtungonline.lobbies-core :as lc]
+    [aleph.tcp :as tcp]
+    [clojure.edn :as edn]
+    [clojure.java.io :as io]))
+
+(import [java.net ServerSocket])
 
 (defn
   ^{:doc  "Add a client to the connected clients list"
@@ -209,3 +214,77 @@
   (do (stop!)
       (reset-atoms!)
       (start!)))
+
+(defn write [writer message]
+  (do (.write writer (str message "\n"))
+      (.flush writer)))
+
+
+(def game-server-atom (atom {:connection :offile
+                             :writer     nil}))
+
+
+(defn start-game! [lobby]
+  (swap! lobbies-state-atom lc/set-game-started (:id lobby))
+  (let [writer (:writer @game-server-atom)]
+    (write writer (create-request-json "start_match" {:lobby-id (:id lobby) :match-config (lc/lobby-id->match-config @lobbies-state-atom (:id lobby))}))))
+
+(add-watch lobbies-state-atom :game-server-listener
+           (fn [_ _ _ lobby-state]
+             (do (println "FITTA" (lc/get-lobbies-to-start lobby-state))
+                 (doseq [lobby (lc/get-lobbies-to-start lobby-state)]
+                   (do (println "BAJS" lobby)
+                       (start-game! lobby))))))
+
+(defn on-game-server-connect [{writer :writer reader :reader}]
+  (swap! game-server-atom (fn [state]
+                            (-> state
+                                (assoc :connection :online)
+                                (assoc :writer writer)))))
+
+(defn handle-message [msg]
+  msg)
+
+
+(def port 3002)
+(def game-server (ServerSocket. port))
+
+(def alive (atom true))
+
+(reset! alive true)
+
+(def thread (future (do
+                      (while @alive
+                        (let [socket (.accept game-server)
+                              writer (io/writer socket)
+                              reader (io/reader socket)]
+                          (println "new client")
+                          (on-game-server-connect {:writer writer :reader reader})
+                          (future (do
+                                    (let [socket-open (atom true)]
+                                      (while (and @alive @socket-open)
+                                        (println "loop")
+                                        (let [msg (.readLine reader)]
+                                          (if (not (nil? msg))
+                                            (let [response (handle-message msg)]
+                                              (when (not (nil? response))
+                                                (write writer response)))
+                                            (reset! socket-open false)))))
+                                    (println "game-server disconnected")
+                                    (.close socket)))))
+                      (println "not listeing anymore."))))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

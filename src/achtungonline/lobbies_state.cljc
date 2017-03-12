@@ -18,10 +18,12 @@
     :test (fn []
             (is= (create-lobby "0")
                  {:id      "0"
-                  :players []}))}
+                  :players []
+                  :game-status :not-started}))}
   create-lobby [id & kvs]
   (let [lobby {:id      id
-               :players []}]
+               :players []
+               :game-status :not-started}]
     (reduce (fn [s [key val]] (assoc s key val)) lobby (partition 2 kvs))))
 
 (defn
@@ -32,7 +34,7 @@
                   :players []
                   :counter 0})
             (is= (create-state :counter 5 :players [(create-player "0" "olle")] :lobbies [(create-lobby "1")])
-                 {:lobbies [{:id "1" :players []}]
+                 {:lobbies [{:id "1" :players [] :game-status :not-started}]
                   :players [{:id "0" :name "olle"}]
                   :counter 5}))}
   create-state [& kvs]
@@ -79,7 +81,7 @@
   ^{:doc  "Add a player to the players list"
     :test (fn []
             (is= (add-player-data-to-lobby (create-state :lobbies [(create-lobby "0")]) "0" {:id "1"})
-                 (create-state :lobbies [{:id "0" :players [{:id "1"}]}])))}
+                 (create-state :lobbies [{:id "0" :players [{:id "1"}] :game-status :not-started}])))}
   add-player-data-to-lobby [state lobby-id player-data]
   (update state :lobbies (fn [lobbies]
                            (map (fn [lobby]
@@ -133,6 +135,8 @@
                                                                  player))
                                                              (:players lobby))))
                                 lobbies))))
+
+
 
 (defn
   ^{:doc  ""

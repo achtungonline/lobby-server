@@ -4,7 +4,9 @@
   :dependencies [[org.clojure/clojure "1.9.0-alpha14"]
                  [http-kit "2.1.18"]
                  [compojure "1.5.1"]
-                 [org.clojure/data.json "0.2.6"]]
+                 [org.clojure/data.json "0.2.6"]
+                 [aleph "0.4.1"]
+                 [gloss "0.2.5"]]
   :main ^:skip-aot achtungonline.server
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all}})
