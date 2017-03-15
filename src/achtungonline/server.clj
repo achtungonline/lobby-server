@@ -9,7 +9,8 @@
     [achtungonline.lobbies-core :as lc]
     [aleph.tcp :as tcp]
     [clojure.edn :as edn]
-    [clojure.java.io :as io]))
+    [clojure.java.io :as io])
+  (:import (io.netty.handler.codec.json JsonObjectDecoder)))
 
 (import [java.net ServerSocket])
 
@@ -142,6 +143,17 @@
     (println player-id color-id)
     (swap! lobbies-state-atom lc/player-color-change {:player-id player-id :color-id color-id})))
 
+
+(defn send-to-lobby [lobby-id message]
+  (->> (:players (ls/get-lobby @lobbies-state-atom lobby-id))
+       (map :id)
+       ;(map (fn [player-id] (player-id->channel @server-state-atom player-id)))
+       ((fn [player-ids]
+          (doseq [player-id player-ids]
+            (let [lobby-data (lc/get-lobby-data @lobbies-state-atom player-id)]
+              (when lobby-data
+                (send! (player-id->channel @server-state-atom player-id) message))))))))
+
 (defn server [req]
   (with-channel req channel                                 ; get the channel
                 ;; communicate with client using method defined above
@@ -187,9 +199,12 @@
                                                       (doseq [player-id player-ids]
                                                         (let [lobby-data (lc/get-lobby-data @lobbies-state-atom player-id)]
                                                           (when lobby-data
-                                                            (send! (player-id->channel @server-state-atom player-id) (create-request-json "lobby_update" lobby-data))))))))))))))
+                                                            (send! (player-id->channel @server-state-atom player-id) (create-request-json "lobby_update" lobby-data)))))))))
+                                            )))))
                 (on-close channel (fn [status]
                                     (println "channel closed"))))) ; data is sent directly to the client
+
+
 
 (defn start! []
   (reset! server-atom (run-server server {:port 3000})))
@@ -245,6 +260,7 @@
 (defn handle-message [msg]
   msg)
 
+(full-restart!)
 
 (def port 3002)
 (def game-server (ServerSocket. port))
@@ -268,7 +284,8 @@
                                           (if (not (nil? msg))
                                             (let [response (handle-message msg)]
                                               (when (not (nil? response))
-                                                (write writer response)))
+                                                (print response)
+                                                (send-to-lobby (get (json/read-str response) "lobbyId") response)))
                                             (reset! socket-open false)))))
                                     (println "game-server disconnected")
                                     (.close socket)))))
