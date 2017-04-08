@@ -6,7 +6,8 @@
                  [compojure "1.5.1"]
                  [org.clojure/data.json "0.2.6"]
                  [aleph "0.4.1"]
-                 [gloss "0.2.5"]]
+                 [gloss "0.2.5"]
+                 [ysera "1.0.2"]]
   :main ^:skip-aot achtungonline.server
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all}})

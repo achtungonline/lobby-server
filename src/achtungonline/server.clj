@@ -4,7 +4,7 @@
     [org.httpkit.server :refer :all]
     [compojure.core :refer :all]
     [clojure.data.json :as json]
-    [achtungonline.test.core :refer [is is= is-not]]
+    [ysera.test :refer [is= is is-not]]
     [achtungonline.lobbies-state :as ls]
     [achtungonline.lobbies-core :as lc]
     [aleph.tcp :as tcp]

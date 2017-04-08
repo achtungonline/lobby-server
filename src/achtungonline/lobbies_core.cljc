@@ -1,6 +1,6 @@
 (ns achtungonline.lobbies-core
   (:require
-    [achtungonline.test.core :refer [is is= is-not]]
+    [ysera.test :refer [is= is is-not]]
     [achtungonline.lobbies-state :as ls]))
 
 
