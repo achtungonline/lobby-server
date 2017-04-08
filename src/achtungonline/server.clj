@@ -154,6 +154,18 @@
               (when lobby-data
                 (send! (player-id->channel @server-state-atom player-id) message))))))))
 
+
+(def game-server-atom (atom {:connection :offile
+                             :writer     nil}))
+
+(defn write [writer message]
+  (do (.write writer (str message "\n"))
+      (.flush writer)))
+
+(defn player-steering [lobby-id player-id steering]
+  (println "STEERING" player-id steering)
+  (write (:writer @game-server-atom) (create-request-json "player_steering" {:lobby-id lobby-id :player-id player-id :steering steering})))
+
 (defn server [req]
   (with-channel req channel                                 ; get the channel
                 ;; communicate with client using method defined above
@@ -166,26 +178,41 @@
                                       ;; When unspecified, `close-after-send?` defaults to true for HTTP channels
                                       ;; and false for WebSocket.  (send! channel data close-after-send?)
                                       (do
-                                        (println "Recieved data" data)
+                                        ;(println "Recieved data" data)
                                         (let [data-obj (json/read-str data)
                                               data-type (get data-obj "type")
                                               player-id (channel->player->id @server-state-atom channel)
+                                              lobby-id (ls/player-id->lobby-id @lobbies-state-atom player-id)
                                               lobbies-state-bofore @lobbies-state-atom]
                                           (do
                                             (cond
-                                              (= data-type "player_ready") (player-ready! lobbies-state-atom {:player-id player-id :ready (get data-obj "ready")})
-                                              (= data-type "color_change") (player-color-change! lobbies-state-atom {:player-id player-id :color-id (keyword (get data-obj "colorId"))})
-                                              (= data-type "enter_lobby") (do (enter-lobby! lobbies-state-atom {:player-id player-id :player-name (get data-obj "playerName")})
-                                                                              (send! channel (create-request-json "lobby_entered" (assoc (lc/get-lobby-data @lobbies-state-atom player-id) :player-id player-id))))
-                                              (= data-type "player-disconnect") (player-disconnect)
-                                              (= data-type "player_leave") (player-leave! lobbies-state-atom {:player-id player-id})
+                                              (= data-type "player_ready")
+                                              (player-ready! lobbies-state-atom {:player-id player-id :ready (get data-obj "ready")})
+
+                                              (= data-type "color_change")
+                                              (player-color-change! lobbies-state-atom {:player-id player-id :color-id (keyword (get data-obj "colorId"))})
+
+                                              (= data-type "enter_lobby")
+                                              (do (enter-lobby! lobbies-state-atom {:player-id player-id :player-name (get data-obj "playerName")})
+                                                  (send! channel (create-request-json "lobby_entered" (assoc (lc/get-lobby-data @lobbies-state-atom player-id) :player-id player-id))))
+
+                                              (= data-type "player-disconnect")
+                                              (player-disconnect)
+
+                                              (= data-type "player_leave")
+                                              (player-leave! lobbies-state-atom {:player-id player-id})
+
+                                              (= data-type "player_steering")
+                                              (player-steering lobby-id player-id (get data-obj "steering"))
+
                                               :else (println "Unknown data-type" data-obj))
-                                            (println "Server-state" @server-state-atom)
-                                            (println "Lobbies-state-before" lobbies-state-bofore)
-                                            (println "Lobbies-state" @lobbies-state-atom)
-                                            (println "player-id" player-id)
-                                            (println "Channels" (distinct (concat (get-channels-connected-to-same-lobby @server-state-atom @lobbies-state-atom player-id) (get-channels-connected-to-same-lobby @server-state-atom lobbies-state-bofore player-id))))
-                                            (println)
+
+                                            ;(println "Server-state" @server-state-atom)
+                                            ;(println "Lobbies-state-before" lobbies-state-bofore)
+                                            ;(println "Lobbies-state" @lobbies-state-atom)
+                                            ;(println "player-id" player-id)
+                                            ;(println "Channels" (distinct (concat (get-channels-connected-to-same-lobby @server-state-atom @lobbies-state-atom player-id) (get-channels-connected-to-same-lobby @server-state-atom lobbies-state-bofore player-id))))
+                                            ;(println)
                                             ; Now we want to send an lobbyUpdate to all participants
                                             (let [affected-lobby-ids (distinct (filter #(if (not (nil? %)) %) [(ls/player-id->lobby-id @lobbies-state-atom player-id) (ls/player-id->lobby-id lobbies-state-bofore player-id)]))]
                                               (->> affected-lobby-ids
@@ -230,15 +257,6 @@
       (reset-atoms!)
       (start!)))
 
-(defn write [writer message]
-  (do (.write writer (str message "\n"))
-      (.flush writer)))
-
-
-(def game-server-atom (atom {:connection :offile
-                             :writer     nil}))
-
-
 (defn start-game! [lobby]
   (swap! lobbies-state-atom lc/set-game-started (:id lobby))
   (let [writer (:writer @game-server-atom)]
@@ -246,10 +264,10 @@
 
 (add-watch lobbies-state-atom :game-server-listener
            (fn [_ _ _ lobby-state]
-             (do (println "FITTA" (lc/get-lobbies-to-start lobby-state))
+             ;(do (println "FITTA" (lc/get-lobbies-to-start lobby-state))
                  (doseq [lobby (lc/get-lobbies-to-start lobby-state)]
-                   (do (println "BAJS" lobby)
-                       (start-game! lobby))))))
+                   ;(do (println "BAJS" lobby)
+                       (start-game! lobby))))
 
 (defn on-game-server-connect [{writer :writer reader :reader}]
   (swap! game-server-atom (fn [state]
@@ -279,12 +297,12 @@
                           (future (do
                                     (let [socket-open (atom true)]
                                       (while (and @alive @socket-open)
-                                        (println "loop")
+                                        ;(println "loop")
                                         (let [msg (.readLine reader)]
                                           (if (not (nil? msg))
                                             (let [response (handle-message msg)]
                                               (when (not (nil? response))
-                                                (print response)
+                                                ;(print response)
                                                 (send-to-lobby (get (json/read-str response) "lobbyId") response)))
                                             (reset! socket-open false)))))
                                     (println "game-server disconnected")
