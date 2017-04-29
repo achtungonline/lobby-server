@@ -8,7 +8,6 @@
     [achtungonline.lobbies-core :as lc]
     [achtungonline.lobbies-handlers :as lh]
     [achtungonline.server-core :as connected-clients]
-    [aleph.tcp :as tcp]
     [clojure.edn :as edn]
     [clojure.java.io :as io]
     [clojure.walk :refer [keywordize-keys]])
@@ -21,6 +20,14 @@
 (defonce connected-clients-atom (atom (connected-clients/create-state)))
 
 (defonce client-server-atom (atom nil))
+
+(defonce game-server-atom (atom {:connection :offline
+                                 :writer     nil}))
+(defn write [writer message]
+  (do
+    ;(println "Write message: " message)
+    (.write writer (str message "\n"))
+    (.flush writer)))
 
 (defn create-request-json
   {:test (fn []
@@ -59,15 +66,23 @@
                (lc/any-lobby-changed? state)
                (do
                  (println "lobby changed")
-                 (send-to-players-channels! (lc/get-players-ids-with-changed-lobby state) "lobby_update" (fn [player-id] (lc/get-lobby-updated-data state {:id player-id})))
+                 (send-to-players-channels! (lc/get-players-ids-with-changed-lobby state) "lobby_update" (fn [player-id] (lc/get-lobby-data state {:id player-id})))
                  (swap! lobbies-atom lh/handle-lobbies-updated))
+
+               (lc/any-lobby-ready-to-start-game? state)
+               (do
+                 (println "start lobby game")
+                 (let [lobby (lc/get-lobby-ready-to-start-game state)
+                       lobby-id (:id lobby)]
+                   (write (:writer @game-server-atom) (create-request-json "start_match" {:lobby-id lobby-id :match-config (lc/lobby-id->match-config state lobby-id)}))
+                   (swap! lobbies-atom lc/set-game-started {:lobby-id lobby-id})))
                )))
 
 (defn handle-client-request
   {:test (fn [])}
   [lobbies-state player-id data]
   (let [data-type (:type data)
-        lobby-id (lc/player-id->lobby-id @lobbies-atom player-id)]
+        lobby-id (lc/player-id->lobby-id lobbies-state player-id)]
     (do
       (cond
         (= data-type "player_ready")
@@ -85,10 +100,6 @@
         (= data-type "player_leave")
         (lh/handle-player-leave-lobby lobbies-state player-id)
 
-        (= data-type "player_steering")
-        (println "TODO player steering")
-        ;(player-steering lobby-id player-id (get data "steering"))
-
         :else (do
                 (println "Unknown data-type: " data-type " with data: " data)
                 lobbies-state)))))
@@ -101,7 +112,10 @@
                                       (let [client-id (connected-clients/channel->client-id @connected-clients-atom channel)
                                             data (keywordize-keys (json/read-str data-string))]
                                         (println "Recieved data from client:" client-id "with data-string:" data-string " converted to data: " data)
-                                        (swap! lobbies-atom handle-client-request client-id data))))
+                                        (if (= (:type data) "player_steering")
+                                          ; TODO Special treatment of player-steering until the client can communicate directly with the game server
+                                          (write (:writer @game-server-atom) (create-request-json "player_steering" {:lobby-id (lc/player-id->lobby-id @lobbies-atom client-id) :player-id client-id :steering (:steering data)}))
+                                          (swap! lobbies-atom handle-client-request client-id data)))))
                 (on-close channel (fn [status]
                                     (let [client-id (connected-clients/channel->client-id @connected-clients-atom channel)]
                                       (println "Channel closed from client:" client-id)
@@ -117,20 +131,72 @@
     (@client-server-atom :timeout 100)
     (reset! client-server-atom nil)))
 
-(defn restart-client-server! []
-  (stop-client-server!)
-  (start-client-server!))
-
 (defn reset-atoms! []
   (swap! lobbies-atom lc/create-state)
   (swap! connected-clients-atom connected-clients/create-state))
 
-(defn full-restart! []
+(defn restart-client-server! []
+  (do
+    (stop-client-server!)
+    (start-client-server!)))
+
+(defn full-restart-client-server! []
   (do (stop-client-server!)
       (reset-atoms!)
       (start-client-server!)))
 
 (start-client-server!)
+
+
+; Game server related
+
+(defn on-game-server-connect [{writer :writer reader :reader}]
+  (swap! game-server-atom (fn [state]
+                            (-> state
+                                (assoc :connection :online)
+                                (assoc :writer writer)))))
+
+(defn handle-message [msg]
+  msg)
+
+(def port 3002)
+(def game-server (ServerSocket. port))
+
+(def alive (atom true))
+
+(reset! alive true)
+
+(defn send-to-lobby [lobby-id message]
+  (println "HORA" lobby-id message)
+  (->> (lc/get-lobby @lobbies-atom lobby-id)
+       (:players)
+       (map :id)
+       ;(map (fn [player-id] (player-id->channel @server-state-atom player-id)))
+       ((fn [player-ids]
+          (doseq [player-id player-ids]
+            ;(let [lobby-data (lc/get-lobby-data @lobbies-atom player-id)]
+            ;  (when lobby-data
+            (send! (connected-clients/client-id->channel @connected-clients-atom player-id) message))))))
+
+(def thread (future (do
+                      (while @alive
+                        (let [socket (.accept game-server)
+                              writer (io/writer socket)
+                              reader (io/reader socket)]
+                          (println "New game server!")
+                          (on-game-server-connect {:writer writer :reader reader})
+                          (future (do
+                                    (let [socket-open (atom true)]
+                                      (while (and @alive @socket-open)
+                                        (let [msg (.readLine reader)]
+                                              (if (not (nil? msg))
+                                                    (let [response (handle-message msg)]
+                                                      (when (not (nil? response))
+                                                            (send-to-lobby (get (json/read-str response) "lobbyId") response)))
+                                                (reset! socket-open false)))))
+                                    (println "game-server disconnected")
+                                    (.close socket)))))
+                      (println "not listeing anymore."))))
 
 ;(defn get-channels-connected-to-same-lobby
 ;  {:test (fn []

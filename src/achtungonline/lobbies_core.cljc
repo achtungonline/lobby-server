@@ -232,7 +232,6 @@
            (is= (set-player-color (create-state :lobbies [(create-lobby "0" :players [{:id "1" :color-id :blue}])]) {:player-id "1" :color-id :pink})
                 (create-state :lobbies [(create-lobby "0" :players [{:id "1" :color-id :pink}])])))}
   [state {player-id :player-id color-id :color-id}]
-  (println "color" color-id)
   (update-lobby state (player-id->lobby-id state player-id) :players (fn [players]
                                                                        (map (fn [player]
                                                                               (if (= (:id player) player-id)
@@ -378,7 +377,7 @@
      :map       {:type "square" :width 800 :height 800}}))
 
 
-(defn- get-lobby-data
+(defn get-lobby-data
   {:test (fn []
            (is= (get-lobby-data (create-state :lobbies [(create-lobby "0")]) {:id "0"})
                 {:match-config {
@@ -426,13 +425,9 @@
                                 :map       {:type "square" :width 800 :height 800}
                                 }
                  :lobby-data   {:players []}
-                 :player-id "0"}))}
+                 :player-id    "0"}))}
   [state {id :id}]
   (assoc (get-lobby-data state {:id id}) :player-id id))
-
-(defn get-lobby-updated-data
-  [state {id :id}]
-  (get-lobby-data state {:id id}))
 
 (defn color-id-taken?
   {:doc  ""
@@ -468,15 +463,28 @@
 
 (defn set-game-started
   {:test (fn []
-           (is= (set-game-started (create-state :lobbies [(create-lobby "0" :players [{:id "3" :ready true}] :game-status :not-started)]) "0")
+           (is= (-> (create-state :lobbies [(create-lobby "0" :players [{:id "3" :ready true}] :game-status :not-started)])
+                    (set-game-started {:lobby-id "0"}))
                 (create-state :lobbies [(create-lobby "0" :players [{:id "3" :ready true}] :game-status :started)])))}
-  [state lobby-id]
+  [state {lobby-id :lobby-id}]
   (update state :lobbies (fn [lobbies]
                            (map (fn [lobby]
                                   (if (= (:id lobby) lobby-id)
                                     (assoc lobby :game-status :started)
                                     lobby))
                                 lobbies))))
+
+(defn is-game-started?
+  {:test (fn []
+           (is (-> (create-state :lobbies [(create-lobby "0")])
+                   (set-game-started "0")
+                   (is-game-started? "0")))
+           (is-not (-> (create-state :lobbies [(create-lobby "0")])
+                       (is-game-started? "0"))))}
+  [state lobby-id]
+  (-> (get-lobby state lobby-id)
+      (:game-status)
+      (= :started)))
 
 (defn remove-player-from-lobby
   {:test (fn []
@@ -597,6 +605,62 @@
            )}
   [state]
   (not (nil? (get-player-who-entered-lobby state))))
+
+
+
+(defn get-lobby-ready-to-start-game
+  {:test (fn []
+           (is= (-> (create-state :lobbies [(create-lobby "0" :players [{:id "1"}])])
+                    (get-lobby-ready-to-start-game))
+                nil)
+           ; Only one player can not start a game
+           (is= (-> (create-state :lobbies [(create-lobby "0" :players [{:id "1"}])])
+                    (set-player-ready "1" true)
+                    (get-lobby-ready-to-start-game))
+                nil)
+           ; Only one player is ready
+           (is= (-> (create-state :lobbies [(create-lobby "0" :players [{:id "1"}])])
+                    (set-player-ready "1" true)
+                    (get-lobby-ready-to-start-game))
+                nil)
+           (is= (-> (create-state :lobbies [(create-lobby "0" :players [{:id "1"}])])
+                    (set-player-ready "1" true)
+                    (get-lobby-ready-to-start-game))
+                nil)
+           (let [state (-> (create-state :lobbies [(create-lobby "0" :players [{:id "1"} {:id "2"}])])
+                           (set-player-ready "1" true)
+                           (set-player-ready "2" true))]
+             (is= (get-lobby-ready-to-start-game state)
+                  (get-lobby state "0")))
+           (let [state (-> (create-state :lobbies [(create-lobby "0" :players [{:id "1"} {:id "2"}])])
+                           (set-player-ready "1" true)
+                           (set-player-ready "2" true)
+                           (set-game-started {:lobby-id "0"}))]
+             (is= (get-lobby-ready-to-start-game state)
+                  nil)))}
+  [state]
+  (->> state
+       (get-lobbies)
+       (filter (fn [lobby]
+                 (let [players (:players lobby)]
+                   (and (not (is-game-started? state (:id lobby)))
+                        (> (count players) 1)
+                        (-> (filter :ready players)
+                            (count)
+                            (= (count players)))))))
+       (first)))
+
+
+(defn any-lobby-ready-to-start-game?
+  {:test (fn []
+           (is-not (-> (create-state :lobbies [(create-lobby "0" :players [{:id "1"}])])
+                       (any-lobby-ready-to-start-game?)))
+           (is (-> (create-state :lobbies [(create-lobby "0" :players [{:id "1"} {:id "2"}])])
+                   (set-player-ready "1" true)
+                   (set-player-ready "2" true)
+                   (any-lobby-ready-to-start-game?))))}
+  [state]
+  (not (nil? (get-lobby-ready-to-start-game state))))
 
 
 
