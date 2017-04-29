@@ -8,6 +8,6 @@
                  [aleph "0.4.1"]
                  [gloss "0.2.5"]
                  [ysera "1.0.2"]]
-  :main ^:skip-aot achtungonline.server
+  :main ^:skip-aot achtungonline.main
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all}})

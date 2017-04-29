@@ -1,11 +1,10 @@
-(ns achtungonline.server
+(ns achtungonline.server_core_old
   (:require
     [clojure.string :refer [upper-case]]
     [org.httpkit.server :refer :all]
     [compojure.core :refer :all]
     [clojure.data.json :as json]
     [ysera.test :refer [is= is is-not]]
-    [achtungonline.lobbies-state :as ls]
     [achtungonline.lobbies-core :as lc]
     [aleph.tcp :as tcp]
     [clojure.edn :as edn]
@@ -73,7 +72,7 @@
 
 
 
-(defonce lobbies-state-atom (atom (ls/create-state)))
+(defonce lobbies-state-atom (atom (lc/create-state)))
 
 (defonce server-state-atom (atom (create-server-state)))
 
@@ -90,13 +89,13 @@
             (is= (get-channels-connected-to-same-lobby (create-server-state :connected-clients [{:id "1" :channel "channel_1"}
                                                                                                 {:id "2" :channel "channel_2"}
                                                                                                 {:id "3" :channel "channel_3"}])
-                                                       (ls/create-state :lobbies [{:players [{:id "1"} {:id "2"}]}])
+                                                       (lc/create-state :lobbies [{:players [{:id "1"} {:id "2"}]}])
                                                        "2")
                  ["channel_1" "channel_2"])
             (is= (get-channels-connected-to-same-lobby (create-server-state :connected-clients [{:id "1" :channel "channel_1"}
                                                                                                 {:id "2" :channel "channel_2"}
                                                                                                 {:id "3" :channel "channel_3"}])
-                                                       (ls/create-state :lobbies [{:id "3" :players [{:id "1"} {:id "2"}]}])
+                                                       (lc/create-state :lobbies [{:id "3" :players [{:id "1"} {:id "2"}]}])
                                                        "3")
                  ["channel_1" "channel_2"])
             (is= (get-channels-connected-to-same-lobby {:connected-clients [{:id "client_0" :channel "channel_1"}] :counter 1}
@@ -132,7 +131,7 @@
 
 (defn player-ready! [lobbies-state-atom {player-id :player-id ready :ready}]
   ;(do
-  (swap! lobbies-state-atom ls/set-player-ready player-id ready))
+  (swap! lobbies-state-atom lc/set-player-ready player-id ready))
 
 (defn player-leave! [lobbies-state-atom {player-id :player-id}]
   ;(do
@@ -145,7 +144,7 @@
 
 
 (defn send-to-lobby [lobby-id message]
-  (->> (:players (ls/get-lobby @lobbies-state-atom lobby-id))
+  (->> (:players (lc/get-lobby @lobbies-state-atom lobby-id))
        (map :id)
        ;(map (fn [player-id] (player-id->channel @server-state-atom player-id)))
        ((fn [player-ids]
@@ -182,7 +181,7 @@
                                         (let [data-obj (json/read-str data)
                                               data-type (get data-obj "type")
                                               player-id (channel->player->id @server-state-atom channel)
-                                              lobby-id (ls/player-id->lobby-id @lobbies-state-atom player-id)
+                                              lobby-id (lc/player-id->lobby-id @lobbies-state-atom player-id)
                                               lobbies-state-bofore @lobbies-state-atom]
                                           (do
                                             (cond
@@ -214,9 +213,9 @@
                                             ;(println "Channels" (distinct (concat (get-channels-connected-to-same-lobby @server-state-atom @lobbies-state-atom player-id) (get-channels-connected-to-same-lobby @server-state-atom lobbies-state-bofore player-id))))
                                             ;(println)
                                             ; Now we want to send an lobbyUpdate to all participants
-                                            (let [affected-lobby-ids (distinct (filter #(if (not (nil? %)) %) [(ls/player-id->lobby-id @lobbies-state-atom player-id) (ls/player-id->lobby-id lobbies-state-bofore player-id)]))]
+                                            (let [affected-lobby-ids (distinct (filter #(if (not (nil? %)) %) [(lc/player-id->lobby-id @lobbies-state-atom player-id) (lc/player-id->lobby-id lobbies-state-bofore player-id)]))]
                                               (->> affected-lobby-ids
-                                                   (map (fn [lobby-id] (ls/get-lobby @lobbies-state-atom lobby-id)))
+                                                   (map (fn [lobby-id] (lc/get-lobby @lobbies-state-atom lobby-id)))
                                                    (map :players)
                                                    (flatten)
                                                    (map :id)
@@ -244,7 +243,7 @@
 
 (defn reset-atoms! []
   (do
-    (swap! lobbies-state-atom ls/create-state)
+    (swap! lobbies-state-atom lc/create-state)
     (swap! server-state-atom create-server-state)
     nil))
 
