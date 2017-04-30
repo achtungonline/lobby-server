@@ -477,11 +477,11 @@
 (defn is-game-started?
   {:test (fn []
            (is (-> (create-state :lobbies [(create-lobby "0")])
-                   (set-game-started "0")
-                   (is-game-started? "0")))
+                   (set-game-started {:lobby-id "0"})
+                   (is-game-started? {:lobby-id "0"})))
            (is-not (-> (create-state :lobbies [(create-lobby "0")])
                        (is-game-started? "0"))))}
-  [state lobby-id]
+  [state {lobby-id :lobby-id}]
   (-> (get-lobby state lobby-id)
       (:game-status)
       (= :started)))
@@ -618,20 +618,17 @@
                     (set-player-ready "1" true)
                     (get-lobby-ready-to-start-game))
                 nil)
-           ; Only one player is ready
-           (is= (-> (create-state :lobbies [(create-lobby "0" :players [{:id "1"}])])
-                    (set-player-ready "1" true)
-                    (get-lobby-ready-to-start-game))
-                nil)
-           (is= (-> (create-state :lobbies [(create-lobby "0" :players [{:id "1"}])])
-                    (set-player-ready "1" true)
-                    (get-lobby-ready-to-start-game))
-                nil)
            (let [state (-> (create-state :lobbies [(create-lobby "0" :players [{:id "1"} {:id "2"}])])
                            (set-player-ready "1" true)
                            (set-player-ready "2" true))]
              (is= (get-lobby-ready-to-start-game state)
                   (get-lobby state "0")))
+           ; Only one player is ready
+           (let [state (-> (create-state :lobbies [(create-lobby "0" :players [{:id "1"} {:id "2"}])])
+                           (set-player-ready "1" true))]
+             (is= (get-lobby-ready-to-start-game state)
+                  nil))
+           ; Lobby has started the game and should not restart...
            (let [state (-> (create-state :lobbies [(create-lobby "0" :players [{:id "1"} {:id "2"}])])
                            (set-player-ready "1" true)
                            (set-player-ready "2" true)
@@ -643,7 +640,7 @@
        (get-lobbies)
        (filter (fn [lobby]
                  (let [players (:players lobby)]
-                   (and (not (is-game-started? state (:id lobby)))
+                   (and (not (is-game-started? state {:lobby-id (:id lobby)}))
                         (> (count players) 1)
                         (-> (filter :ready players)
                             (count)

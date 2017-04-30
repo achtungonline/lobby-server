@@ -53,7 +53,7 @@
   (send-to-players-channels! (lc/get-players-ids-with-changed-lobby @lobbies-atom) "lobby_update" (fn [player-id] (lc/get-lobby-data @lobbies-atom {:id player-id})))
   (swap! lobbies-atom lh/handle-lobbies-updated))
 
-(defn handle-lobby-ready-to-start-game []
+(defn handle-lobby-ready-to-start-game! []
   (println "start lobby game")
   (let [lobby (lc/get-lobby-ready-to-start-game @lobbies-atom)
         lobby-id (:id lobby)]
@@ -70,7 +70,7 @@
                (handle-lobby-changed!)
 
                (lc/any-lobby-ready-to-start-game? state)
-               (handle-lobby-ready-to-start-game))))
+               (handle-lobby-ready-to-start-game!))))
 
 (defn handle-client-request
   {:test (fn [])}
@@ -105,7 +105,7 @@
                 (on-receive channel (fn [data-string]
                                       (let [client-id (server_core/channel->client-id @connected-clients-atom channel)
                                             data (keywordize-keys (json/read-str data-string))]
-                                        (println "Recieved data from client:" client-id "with data-string:" data-string " converted to data: " data)
+                                        (println "Received data from client:" client-id "with data-string:" data-string " converted to data: " data)
                                         (if (= (:type data) "player_steering")
                                           ; TODO Special treatment of player-steering until the client can communicate directly with the game server
                                           (write-to-game-server (server_core/create-request-json "player_steering" {:lobby-id (lc/player-id->lobby-id @lobbies-atom client-id) :player-id client-id :steering (:steering data)}))

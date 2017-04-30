@@ -38,7 +38,6 @@
                 (lc/create-lobby "0" :players [{:id "1" :color-id :blue}] :changed true)))}
   [state {player-id :player-id color-id :color-id}]
 
-  (println "color" color-id)
   (-> (if (or (lc/color-id-taken? state {:id player-id :color-id color-id}) (empty? (filter #(= color-id %) lc/player-colors)))
         state
         (lc/set-player-color state {:player-id player-id :color-id color-id}))
